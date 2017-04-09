@@ -210,7 +210,7 @@ parser.add_option("--roll", action="store_true", dest="roll", help="roll a group
 parser.add_option("--batch-size", action="store", dest="batch", help="roll batch size - must supply with the roll flag")
 parser.add_option("--grace-period", action="store", dest="grace", help="roll grace period - must supply with the roll flag")
 parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI for group")
-parser.add_option("--detach-batch", action="store_true", dest="kill_batch", help="detach all instances for specific batch - choose from a list of batches")
+parser.add_option("--detach-batch", action="store_true", dest="detach_batch", help="detach all instances for specific batch - choose from a list of batches")
 (options, args) = parser.parse_args()
 
 # show help as default and exit
