@@ -126,9 +126,9 @@ def calc_percentage_change(old_val, new_val):
     percentage_change = 0
     try:
         if old_val != 0:
-            percentage_change = ((new_val - old_val) / float(old_val)) * 100
+            percentage_change = ((int(new_val) - int(old_val)) / float(old_val)) * 100
         return abs(percentage_change)
-    except:
+    except Exception as e:
         return percent_alert_threshold
 
 # This function checks for changes in the group target and alerts the user
@@ -202,13 +202,13 @@ parser.add_option("-l", "--list", action="store_true", dest="list", help="show g
 parser.add_option("--min", action="store", dest="min", type=int, help="update group minimum capacity, must suuply with max and target")
 parser.add_option("--target", action="store", dest="target", type=int, help="update group target capacity, must supply with min and max")
 parser.add_option("--max", action="store", dest="max", type=int, help="update group maximum capacity, must supply with min and target")
-parser.add_option("--scale-up", action="store", dest="scale_up", help="scale up group by X number of instances")
-parser.add_option("--scale-down", action="store", dest="scale_down", help="scale down group by X number of instances")
+parser.add_option("--scale-up", action="store", dest="scale_up", type=int, help="scale up group by X number of instances")
+parser.add_option("--scale-down", action="store", dest="scale_down", type=int, help="scale down group by X number of instances")
 parser.add_option("--suspend", action="store_true", dest="suspend", help="suspend group activities")
 parser.add_option("--unsuspend", action="store_true", dest="unsuspend", help="unsuspend group activities")
 parser.add_option("--roll", action="store_true", dest="roll", help="roll a group, must supply batch-size, and grace-period")
-parser.add_option("--batch-size", action="store", dest="batch", help="roll batch size - must supply with the roll flag")
-parser.add_option("--grace-period", action="store", dest="grace", help="roll grace period - must supply with the roll flag")
+parser.add_option("--batch-size", action="store", dest="batch", type=int, help="roll batch size - must supply with the roll flag")
+parser.add_option("--grace-period", action="store", dest="grace", type=int, help="roll grace period - must supply with the roll flag")
 parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI for group")
 parser.add_option("--user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
 parser.add_option("--detach-batch", action="store_true", dest="detach_batch", help="detach all instances for specific batch - choose from a list of batches")
@@ -301,6 +301,8 @@ if options.detach_batch:
 
 
 groups_to_update = get_groups(options.grep, options.ungrep)
+if len(groups_to_update) == 0:
+    errorAndExit("could not find any groups for the search term: {}".format(options.grep))
 print_all_groups(groups_to_update)
 # if the list flag was triggered, need to exit
 if options.list is not None:
@@ -332,7 +334,7 @@ for group, group_values in groups_to_update.iteritems():
             command = "down"
             adjustment = options.scale_down
         # check that this change does not pass the percent_alert_threshold
-        ans = check_change_in_target(group, group_values[2], adjustment, percent_alert_threshold)
+        ans = check_change_in_target(group, group_values[2], int(adjustment) + int(group_values[2]), percent_alert_threshold)
         if ans != "y":
             print "\nSkipping update for this group..."
             continue
