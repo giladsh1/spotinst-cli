@@ -8,7 +8,8 @@ from collections import OrderedDict
 from optparse import OptionParser
 from os import system, environ
 from sys import argv, stdout
-from base64 import b64decode, b64encode
+from os import path
+from base64 import b64encode, b64decode
 
 
 # This function prints error and exits
@@ -210,6 +211,7 @@ parser.add_option("--roll", action="store_true", dest="roll", help="roll a group
 parser.add_option("--batch-size", action="store", dest="batch", help="roll batch size - must supply with the roll flag")
 parser.add_option("--grace-period", action="store", dest="grace", help="roll grace period - must supply with the roll flag")
 parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI for group")
+parser.add_option("--user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
 parser.add_option("--detach-batch", action="store_true", dest="detach_batch", help="detach all instances for specific batch - choose from a list of batches")
 (options, args) = parser.parse_args()
 
@@ -244,7 +246,7 @@ except:
     errorAndExit("you must define an environment variable called 'spotinst_token' with a valid token (use export or .bashrc file)!")
 
 # handle the kill batch option
-if options.kill_batch:
+if options.detach_batch:
     # first get a specific group
     kill_in_group = get_specific_group(options.grep, options.ungrep)
     group_id = kill_in_group[1][0]
@@ -364,8 +366,22 @@ for group, group_values in groups_to_update.iteritems():
         payload = dumps({ "group": { "compute": { "launchSpecification": { "imageId": options.ami  }}}})
         message = "replacing AMI for {}".format(group)
 
+    # handle replace of user data script
+    elif options.user_data is not None:
+        if not path.isfile(options.user_data):
+            errorAndExit("{} is not a valid file name!".format(options.user_data))
+        f = open(options.user_data, "r")
+        user_data_script = f.read()
+        f.close()
+        user_data_script = b64encode(user_data_script)
+        req_path = "{}/{}".format(base_path, group_id)
+        req_type = 'PUT'
+        payload = dumps({ "group": { "compute": { "launchSpecification": { "userData": user_data_script  }}}})
+        message = "sending a request to update the user data script..."
+
     else:
         errorAndExit("could not create the proper request, please check the script flags and input!")
+
 
     print_header(group)
     print message
