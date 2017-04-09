@@ -14,9 +14,8 @@ from base64 import b64encode, b64decode
 
 # This function prints error and exits
 def errorAndExit(exception_message):
-    print "ERROR - %s" %(exception_message)
+    print "\nERROR - %s" %(exception_message)
     exit()
-
 
 # This function checks if a package is installed and prints a message if necessary
 def check_package_is_installed(package_name):
@@ -80,10 +79,10 @@ def get_groups(grep_term, ungrep_term):
         # is so, need to return only the groups that matches the search
         group_name = group['name'].lower()
         if ungrep_term == "":
-            if grep_term in group_name:
+            if grep_term.lower() in group_name:
                 groups_dict[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
         else:
-            if ungrep_term not in group_name and grep_term in group_name:
+            if ungrep_term.lower() not in group_name and grep_term.lower() in group_name:
                 groups_dict[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
     # sort the list by name
     sorted_inst = OrderedDict(sorted(groups_dict.items()))
@@ -380,7 +379,7 @@ for group, group_values in groups_to_update.iteritems():
         message = "sending a request to update the user data script..."
 
     else:
-        errorAndExit("could not create the proper request, please check the script flags and input!")
+        errorAndExit("could not find a proper update command, please check the script input flags!\n")
 
 
     print_header(group)
