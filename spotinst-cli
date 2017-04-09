@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # This tool allows the user to interact with spotinst API
-# run the script with the -h flag get the help
+# run the script with the -h flag for help
 
 from json import loads, dumps
 from collections import OrderedDict
@@ -10,14 +10,20 @@ from os import system, environ
 from sys import argv, stdout
 from base64 import b64decode, b64encode
 
+
+# This function prints error and exits
 def errorAndExit(exception_message):
     print "ERROR - %s" %(exception_message)
     exit()
 
+
+# This function checks if a package is installed and prints a message if necessary
 def check_package_is_installed(package_name):
     if not package_name in packages:
         errorAndExit("{} is not installed, please run 'sudo pip install {}' and try again.".format(package_name,package_name))
 
+
+# This function changes the color of the text in the terminal
 def change_prompt_color(which_color):
     if which_color == 'red':
         stdout.write("\033[1;31m")
@@ -26,16 +32,21 @@ def change_prompt_color(which_color):
     elif which_color == 'normal':
         stdout.write("\033[0;0m")
 
+
+# This function prints a message in green/red and returns back to white text
 def print_in_color(color, msg):
     change_prompt_color(color)
     print msg
     change_prompt_color('normal')
 
+
+# This function prints a group name surrounded with =
 def print_header(text):
     text_len = len(text)
     print "\n" + ("=" * text_len)
     print text
     print ("=" * text_len)
+
 
 # This function queries spotinst API endpoint
 def query_api(api_url, spotinst_token, req_method='GET', req_payload=None):
@@ -54,6 +65,7 @@ def query_api(api_url, spotinst_token, req_method='GET', req_payload=None):
             return delete(api_url, headers=headers, data=req_payload)
     except Exception as e:
         errorAndExit(e.message)
+
 
 # This function returns a groups dict, filtered by name (contains) or all if parameter is empty
 def get_groups(grep_term, ungrep_term):
@@ -76,6 +88,7 @@ def get_groups(grep_term, ungrep_term):
     sorted_inst = OrderedDict(sorted(groups_dict.items()))
     return sorted_inst
 
+
 # This function prints groups as a table
 def print_all_groups(groups_to_print):
     table = PrettyTable(['#' ,'Group name', 'ID', 'Min', 'Target', 'Max'])
@@ -89,7 +102,8 @@ def print_all_groups(groups_to_print):
 
     print table
 
-# function to choose a specific group from a list
+
+# This function asks the user to choose a specific group from a list
 def get_specific_group(grep_term, ungrep_term):
     groups_to_update = get_groups(grep_term, ungrep_term)
     # check if filter has more than one list and ask the user to choose a group
@@ -106,6 +120,7 @@ def get_specific_group(grep_term, ungrep_term):
         group_values = groups_to_update[group_name]
     return [group_name, group_values]
 
+
 # This function calculates the percentage change between two given numbers
 def calc_percentage_change(old_val, new_val):
     percentage_change = 0
@@ -116,6 +131,7 @@ def calc_percentage_change(old_val, new_val):
     except:
         return percent_alert_threshold
 
+# This function checks for changes in the group target and alerts the user
 def check_change_in_target(group_name, current_group_target, desired_group_target, alert_threshold):
     target_change = calc_percentage_change(current_group_target, desired_group_target)
     ans_change = "y"
@@ -124,7 +140,8 @@ def check_change_in_target(group_name, current_group_target, desired_group_targe
         ans_change = raw_input("This represent a change of over 30%, are you sure you want to proceed? [y/n] ")
     return ans_change
 
-# This function prints a message
+
+# This function prints a message surrounded by #
 def print_message(msg):
     all_lines = msg.splitlines()
     longest_line = 0
@@ -137,12 +154,14 @@ def print_message(msg):
         print (" " * (padding / 2)) + line
     print ("#" * (longest_line + padding)) + "\n"
 
-# function to make sure the user wants to process with his choice
+
+# This function makes sure the user wants to process with his choice
 def user_make_sure(question):
     ans_from_user = raw_input(question)
     if ans_from_user !="y":
         print "\nExiting.."
         exit()
+
 
 # function to get y or n from the user and return True/ False accordingly
 def get_yes_no_from_user(question):
@@ -155,6 +174,8 @@ def get_yes_no_from_user(question):
         return True
     else:
         return False
+
+
 
 ##### MAIN ####
 # check required pip packages
@@ -170,7 +191,7 @@ except ImportError:
 check_package_is_installed("prettytable")
 check_package_is_installed("requests")
 from prettytable import PrettyTable
-from requests import put, get, post, delete, Request, request
+from requests import put, get, post, delete
 
 # define help and options
 usage = "Usage: %prog [options]"
@@ -189,13 +210,14 @@ parser.add_option("--roll", action="store_true", dest="roll", help="roll a group
 parser.add_option("--batch-size", action="store", dest="batch", help="roll batch size - must supply with the roll flag")
 parser.add_option("--grace-period", action="store", dest="grace", help="roll grace period - must supply with the roll flag")
 parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI for group")
-parser.add_option("--kill-batch", action="store", dest="kill_batch", help="kill all instances with specific create date - should be supplied as 2017-04-07T18:08:26 (GMT)")
+parser.add_option("--detach-batch", action="store_true", dest="kill_batch", help="detach all instances for specific batch - choose from a list of batches")
 (options, args) = parser.parse_args()
 
-# show help as default
+# show help as default and exit
 if len(argv) == 1:
     system("python " + argv[0] + " -h")
     exit()
+
 
 # global variables
 percent_alert_threshold = 30
@@ -235,10 +257,26 @@ if options.kill_batch:
         print_in_color('red', "Error while getting the group status!\nstatus code: {}, reason: {}\n".format(res.status_code, data['response']['errors'][0]['message']))
     else:
         # find which instances has the create date supplied by the user
-        instances_to_kill = []
+        batches = []
         data = loads(res.content)
         for instance in data['response']['items']:
-            if options.kill_batch in instance['createdAt']:
+            if not instance['createdAt'] in batches:
+                batches.append(instance['createdAt'])
+        batches = sorted(batches)
+        print "\nFound the following batches for the group: {}\n".format(group_name)
+        counter = 1
+        for batch in batches:
+            print "[{}] {}".format(counter, batch)
+            counter += 1
+        batch_number =  raw_input("\nWhich batch would you like to kill? ")
+        try:
+            batch_to_detach = batches[int(batch_number) - 1]
+        except Exception as e:
+            errorAndExit("no such batch exists!")
+
+        instances_to_kill = []
+        for instance in data['response']['items']:
+            if batch_to_detach in instance['createdAt']:
                 instances_to_kill.append(instance['instanceId'])
 
         # finally send a request to detach instances
@@ -258,7 +296,6 @@ if options.kill_batch:
             print_in_color('red', "Error while getting the group status!\nstatus code: {}, reason: {}\n".format(res.status_code, data['response']['errors'][0]['message']))
         else:
             print_in_color('green', "\nSuccessfully terminated the required batch!")
-        
     exit()
 
 
