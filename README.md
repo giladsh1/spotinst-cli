@@ -19,5 +19,5 @@ spotinst-cli has the following flags -
   --batch-size=BATCH           roll batch size - must supply with the roll flag
   --grace-period=GRACE         roll grace period - must supply with the roll flag
   --replace-ami=AMI            replace AMI for group
-  --kill-batch=KILL_BATCH      kill all instances with specific create date - should  be supplied as 2017-04-07T18:08:26 (GMT)
+  --detach-batch               detach all instances for specific batch - choose from a list of batches
 ```
