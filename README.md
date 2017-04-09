@@ -19,5 +19,6 @@ spotinst-cli has the following flags -
   --batch-size=BATCH           roll batch size - must supply with the roll flag
   --grace-period=GRACE         roll grace period - must supply with the roll flag
   --replace-ami=AMI            replace AMI for group
+  --user-data=USER_DATA        updated user data - supply a file path which contains the user data script (cloud init)
   --detach-batch               detach all instances for specific batch - choose from a list of batches
 ```
