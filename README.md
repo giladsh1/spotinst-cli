@@ -1,7 +1,8 @@
 # spotinst-cli
 spotinst-cli is is an interactive command line tool which allows you to to control your spotinst groups and instances.
 
-## usage
+### Usage  
+
 spotinst-cli has the following flags - 
 ```
   -h, --help                   show this help message and exit
@@ -22,3 +23,20 @@ spotinst-cli has the following flags -
   --user-data=USER_DATA        updated user data - supply a file path which contains the user data script (cloud init)
   --detach-batch               detach all instances for specific batch - choose from a list of batches
 ```
+### Example usage
+#### list groups with name filter:
+![](docs/list_groups.png)
+
+#### update group's capcity:
+![](docs/update_capacity.png)
+
+#### scale up:
+![](docs/scale_up.png)
+
+#### replace group AMI:
+![](docs/replace-ami.png)
+
+#### detach specific batch:
+![](docs/detach_batch.png)
+
+
