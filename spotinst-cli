@@ -1,0 +1,343 @@
+#!/usr/bin/env python
+
+# This tool allows the user to interact with spotinst API
+# run the script with the -h flag get the help
+
+from json import loads, dumps
+from collections import OrderedDict
+from optparse import OptionParser
+from os import system, environ
+from sys import argv, stdout
+from base64 import b64decode, b64encode
+
+def errorAndExit(exception_message):
+    print "ERROR - %s" %(exception_message)
+    exit()
+
+def check_package_is_installed(package_name):
+    if not package_name in packages:
+        errorAndExit("{} is not installed, please run 'sudo pip install {}' and try again.".format(package_name,package_name))
+
+def change_prompt_color(which_color):
+    if which_color == 'red':
+        stdout.write("\033[1;31m")
+    elif which_color == 'green':
+        stdout.write("\033[0;32m")
+    elif which_color == 'normal':
+        stdout.write("\033[0;0m")
+
+def print_in_color(color, msg):
+    change_prompt_color(color)
+    print msg
+    change_prompt_color('normal')
+
+def print_header(text):
+    text_len = len(text)
+    print "\n" + ("=" * text_len)
+    print text
+    print ("=" * text_len)
+
+# This function queries spotinst API endpoint
+def query_api(api_url, spotinst_token, req_method='GET', req_payload=None):
+    try:
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer %s' % spotinst_token,
+        }
+        if req_method == 'GET':
+            return get(api_url, headers=headers)
+        elif req_method == 'PUT':
+            return put(api_url, headers=headers, data=req_payload)
+        elif req_method == 'POST':
+            return post(api_url, headers=headers, data=req_payload)
+        elif req_method == 'DELETE':
+            return delete(api_url, headers=headers, data=req_payload)
+    except Exception as e:
+        errorAndExit(e.message)
+
+# This function returns a groups dict, filtered by name (contains) or all if parameter is empty
+def get_groups(grep_term, ungrep_term):
+    print "\nQuerying spotinst API, hold on..."
+    result  = query_api(base_path, token)
+    data = loads(result.content)
+    groups_dict = {}
+    all_groups = data['response']['items']
+    for group in all_groups:
+        # check if the spot_group_name parameter is not empty
+        # is so, need to return only the groups that matches the search
+        group_name = group['name'].lower()
+        if ungrep_term == "":
+            if grep_term in group_name:
+                groups_dict[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
+        else:
+            if ungrep_term not in group_name and grep_term in group_name:
+                groups_dict[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
+    # sort the list by name
+    sorted_inst = OrderedDict(sorted(groups_dict.items()))
+    return sorted_inst
+
+# This function prints groups as a table
+def print_all_groups(groups_to_print):
+    table = PrettyTable(['#' ,'Group name', 'ID', 'Min', 'Target', 'Max'])
+    table.align = "l"
+    table.border = True
+    counter = 1
+    for key, value in groups_to_print.iteritems():
+        table.add_row([counter, key, value[0], value[1], value[2], value[3]])
+        counter += 1
+    print_message("Found the following groups: ")
+
+    print table
+
+# function to choose a specific group from a list
+def get_specific_group(grep_term, ungrep_term):
+    groups_to_update = get_groups(grep_term, ungrep_term)
+    # check if filter has more than one list and ask the user to choose a group
+    if len(groups_to_update) > 1 and options.list is None:
+        print_all_groups(groups_to_update)
+        ans = raw_input("\nWhich group would you like to update?\nGroup number: ")
+        try:
+            group_name = list(groups_to_update)[int(ans) - 1]
+            group_values = groups_to_update[group_name]
+        except:
+            errorAndExit("no such group exists!")
+    else:
+        group_name = list(groups_to_update)[0]
+        group_values = groups_to_update[group_name]
+    return [group_name, group_values]
+
+# This function calculates the percentage change between two given numbers
+def calc_percentage_change(old_val, new_val):
+    percentage_change = 0
+    try:
+        if old_val != 0:
+            percentage_change = ((new_val - old_val) / float(old_val)) * 100
+        return abs(percentage_change)
+    except:
+        return percent_alert_threshold
+
+def check_change_in_target(group_name, current_group_target, desired_group_target, alert_threshold):
+    target_change = calc_percentage_change(current_group_target, desired_group_target)
+    ans_change = "y"
+    if int(target_change) >= alert_threshold:
+        print "{} target value is: {}, requested target is: {}.".format(group_name, current_group_target, desired_group_target)
+        ans_change = raw_input("This represent a change of over 30%, are you sure you want to proceed? [y/n] ")
+    return ans_change
+
+# This function prints a message
+def print_message(msg):
+    all_lines = msg.splitlines()
+    longest_line = 0
+    for line in all_lines:
+        if len(line.strip()) > longest_line:
+            longest_line = len(line.strip())
+    padding = 8
+    print "\n" + ("#" * (longest_line + padding))
+    for line in msg.splitlines():
+        print (" " * (padding / 2)) + line
+    print ("#" * (longest_line + padding)) + "\n"
+
+# function to make sure the user wants to process with his choice
+def user_make_sure(question):
+    ans_from_user = raw_input(question)
+    if ans_from_user !="y":
+        print "\nExiting.."
+        exit()
+
+# function to get y or n from the user and return True/ False accordingly
+def get_yes_no_from_user(question):
+    ans_from_user = ""
+    while ans_from_user != "y" and ans_from_user != "n":
+        ans_from_user = raw_input(question)
+        if ans_from_user != "y" and ans_from_user != "n":
+            print "please answer 'y' or 'n' only!"
+    if ans_from_user == "y":
+        return True
+    else:
+        return False
+
+##### MAIN ####
+# check required pip packages
+pip_installed = False
+packages = []
+try:
+    from pip import get_installed_distributions
+    pip_installed = True
+    installed_packages = get_installed_distributions()
+    packages = [package.project_name for package in installed_packages]
+except ImportError:
+    errorAndExit("you must install python-pip before using this script")
+check_package_is_installed("prettytable")
+check_package_is_installed("requests")
+from prettytable import PrettyTable
+from requests import put, get, post, delete, Request, request
+
+# define help and options
+usage = "Usage: %prog [options]"
+parser = OptionParser(usage)
+parser.add_option("-g", "--grep", action="store", dest="grep", default="", help="text to filter groups by")
+parser.add_option("-u", "--ungrep", action="store", default="", dest="ungrep", help="text to exclude groups")
+parser.add_option("-l", "--list", action="store_true", dest="list", help="show group list and exit")
+parser.add_option("--min", action="store", dest="min", type=int, help="update group minimum capacity, must suuply with max and target")
+parser.add_option("--target", action="store", dest="target", type=int, help="update group target capacity, must supply with min and max")
+parser.add_option("--max", action="store", dest="max", type=int, help="update group maximum capacity, must supply with min and target")
+parser.add_option("--scale-up", action="store", dest="scale_up", help="scale up group by X number of instances")
+parser.add_option("--scale-down", action="store", dest="scale_down", help="scale down group by X number of instances")
+parser.add_option("--suspend", action="store_true", dest="suspend", help="suspend group activities")
+parser.add_option("--unsuspend", action="store_true", dest="unsuspend", help="unsuspend group activities")
+parser.add_option("--roll", action="store_true", dest="roll", help="roll a group, must supply batch-size, and grace-period")
+parser.add_option("--batch-size", action="store", dest="batch", help="roll batch size - must supply with the roll flag")
+parser.add_option("--grace-period", action="store", dest="grace", help="roll grace period - must supply with the roll flag")
+parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI for group")
+parser.add_option("--kill-batch", action="store", dest="kill_batch", help="kill all instances with specific create date - should be supplied as 2017-04-07T18:08:26 (GMT)")
+(options, args) = parser.parse_args()
+
+# show help as default
+if len(argv) == 1:
+    system("python " + argv[0] + " -h")
+    exit()
+
+# global variables
+percent_alert_threshold = 30
+
+# validate input
+if options.max is not None and (options.min is None or options.target is None):
+    errorAndExit("you must supply max with min and target!")
+if options.min is not None and (options.max is None or options.target is None):
+    errorAndExit("you must supply min with max and target!")
+if options.target is not None and (options.max is None or options.min is None):
+    errorAndExit("you must supply target with max and min!")
+if options.roll is not None and (options.batch is None or options.grace is None):
+    errorAndExit("you must supply batch size and grace period with the roll flag!")
+if options.max is not None and options.min is not None and options.target is not None:
+    if options.target < options.min or options.max < options.min or options.target > options.max:
+        errorAndExit("check input - the number makes no sense!")
+
+# set spotinst main path and check spotinst token
+base_path = "https://api.spotinst.io/aws/ec2/group"
+token = ""
+try:
+    token = environ.get('spotinst_token')
+except:
+    errorAndExit("you must define an environment variable called 'spotinst_token' with a valid token (use export or .bashrc file)!")
+
+# handle the kill batch option
+if options.kill_batch:
+    # first get a specific group
+    kill_in_group = get_specific_group(options.grep, options.ungrep)
+    group_id = kill_in_group[1][0]
+    group_name = kill_in_group[0]
+    req_path = "{}/{}/status".format(base_path, group_id)
+    res = query_api(req_path, token, 'GET', '')
+    # get the group instances
+    if res.status_code != 200:
+        data = loads(res.content)
+        print_in_color('red', "Error while getting the group status!\nstatus code: {}, reason: {}\n".format(res.status_code, data['response']['errors'][0]['message']))
+    else:
+        # find which instances has the create date supplied by the user
+        instances_to_kill = []
+        data = loads(res.content)
+        for instance in data['response']['items']:
+            if options.kill_batch in instance['createdAt']:
+                instances_to_kill.append(instance['instanceId'])
+
+        # finally send a request to detach instances
+        print "\nFound {} relevant instances for the group: {}\nInstances ID's:".format(len(instances_to_kill), group_name)
+        for i in instances_to_kill:
+            print "{} ".format(i),
+        user_make_sure ("\n\nAre you sure you want to detach the above instances? [y/n] ")
+        decrement = get_yes_no_from_user("\nDo you want to decrement the capacity of the group? [y/n] ")
+        terminate = get_yes_no_from_user("\nDo you want to terminate the above instances (or just remove from group)? [y/n] ")
+        req_path = "{}/{}/detachInstances".format(base_path, group_id)
+        payload = dumps ({ "instancesToDetach": instances_to_kill, "shouldTerminateInstances" : terminate, "shouldDecrementTargetCapacity" : decrement })
+        print_header(group_name)
+        print "\nGoing to detach (terminate) the above instances..."
+        res = query_api(req_path, token, 'PUT', payload)
+        if res.status_code != 200:
+            data = loads(res.content)
+            print_in_color('red', "Error while getting the group status!\nstatus code: {}, reason: {}\n".format(res.status_code, data['response']['errors'][0]['message']))
+        else:
+            print_in_color('green', "\nSuccessfully terminated the required batch!")
+        
+    exit()
+
+
+groups_to_update = get_groups(options.grep, options.ungrep)
+print_all_groups(groups_to_update)
+# if the list flag was triggered, need to exit
+if options.list is not None:
+    exit()
+# make sure the user wants to continue with the current filter
+user_make_sure("\nAre you sure you want to updated these groups[y/n]? ")
+# loop through each group and update
+payload = None
+for group, group_values in groups_to_update.iteritems():
+    group_id = group_values[0]
+    # handle suspension request
+    if options.suspend is not None or options.unsuspend is not None:
+        req_path = "{}/{}/suspension".format(base_path, group_id)
+        payload = '{"processes":["AUTO_SCALE"]}'
+        if options.suspend is not None:
+            req_type = 'POST'
+            command = "suspend"
+        elif options.unsuspend is not None:
+            req_type = 'DELETE'
+            command = "unsuspend"
+        message = "sending request to {} the group".format(command)
+    # handle scale request
+    elif options.scale_down is not None or options.scale_up is not None:
+        req_type = 'PUT'
+        if options.scale_up is not None:
+            command = "up"
+            adjustment = options.scale_up
+        elif options.scale_down is not None:
+            command = "down"
+            adjustment = options.scale_down
+        # check that this change does not pass the percent_alert_threshold
+        ans = check_change_in_target(group, group_values[2], adjustment, percent_alert_threshold)
+        if ans != "y":
+            print "\nSkipping update for this group..."
+            continue
+        req_path = "{}/{}/scale/{}\?adjustment={}".format(base_path, group_id, command, adjustment)
+        message = "sending request to scale {} {} instances...".format(command, adjustment)
+
+    # handle group update request
+    elif options.min is not None and options.target is not None and options.max is not None:
+        # check that this change does not pass the percent_alert_threshold
+        change_ans = check_change_in_target(group, group_values[2], options.target, percent_alert_threshold)
+        if change_ans != "y":
+            print "\nSkipping update for this group..."
+            continue
+        payload = dumps({ "group": { "capacity": { "target": options.target, "minimum": options.min , "maximum": options.max }}})
+        req_type = 'PUT'
+        message = "sending the following payload: {}".format(payload)
+        req_path = "{}/{}".format(base_path, group_id)
+
+    # handle roll request
+    elif options.roll is not None and options.batch is not None and options.grace is not None:
+        req_type = 'PUT'
+        req_path = "{}/{}/roll".format(base_path, group_id)
+        payload = dumps({ "batchSizePercentage" : options.batch, "gracePeriod" : options.grace })
+        message = "rolling group: {} with batch-size: {} and a grace period: {}".format(group, options.batch, options.grace)
+
+    # handle replace ami
+    elif options.ami is not None:
+        req_type = 'PUT'
+        req_path = "{}/{}".format(base_path, group_id)
+        payload = dumps({ "group": { "compute": { "launchSpecification": { "imageId": options.ami  }}}})
+        message = "replacing AMI for {}".format(group)
+
+    else:
+        errorAndExit("could not create the proper request, please check the script flags and input!")
+
+    print_header(group)
+    print message
+    res = query_api(req_path, token, req_type, payload)
+    if res.status_code == 200:
+        print_in_color('green', "Update was successful!")
+    else:
+        data = loads(res.content)
+        print_in_color('red', "Error while updating group!\nstatus code: {}, reason: {}\n".format(res.status_code, data['response']['errors'][0]['message']))
+
+    print_message("Done updating all groups!")
+
