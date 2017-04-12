@@ -213,6 +213,7 @@ parser.add_option("--grace-period", action="store", dest="grace", type=int, help
 parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI for group")
 parser.add_option("--user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
 parser.add_option("--detach-batch", action="store_true", dest="detach_batch", help="detach all instances for specific batch - choose from a list of batches")
+parser.add_option("-y", "--skip-validation", action="store_true", dest="skip_validation", help="skip prompt validation for non-interactive mode")
 (options, args) = parser.parse_args()
 
 # show help as default and exit
@@ -247,6 +248,8 @@ except:
 
 # handle the kill batch option
 if options.detach_batch:
+    if options.skip_validation:
+        errorAndExit("the skip validation option is not valid with the --detach-batch option!")
     # first get a specific group
     kill_in_group = get_specific_group(options.grep, options.ungrep)
     group_id = kill_in_group[1][0]
@@ -391,7 +394,10 @@ for group, group_values in groups_to_update.iteritems():
 
     # make sure the user wants to continue with the current filter
     if not change_validation:
-        user_make_sure("\nAre you sure you want to updated these groups[y/n]? ")
+        if not options.skip_validation:
+            user_make_sure("\nAre you sure you want to updated these groups[y/n]? ")
+        else:
+            print "Found skip validation option, skipping user prompt..."
         change_validation = True
     print_header(group)
     print message
