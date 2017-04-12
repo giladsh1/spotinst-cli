@@ -197,6 +197,7 @@ from requests import put, get, post, delete
 usage = "Usage: %prog [options]"
 parser = OptionParser(usage)
 parser.add_option("-g", "--grep", action="store", dest="grep", default="", help="text to filter groups by")
+parser.add_option("-d", "--get-data", action="store_true", dest="data", default="", help="get groups data from spotinst")
 parser.add_option("-u", "--ungrep", action="store", default="", dest="ungrep", help="text to exclude groups")
 parser.add_option("-l", "--list", action="store_true", dest="list", help="show group list and exit")
 parser.add_option("--min", action="store", dest="min", type=int, help="update group minimum capacity, must suuply with max and target")
@@ -307,14 +308,19 @@ print_all_groups(groups_to_update)
 # if the list flag was triggered, need to exit
 if options.list is not None:
     exit()
-# make sure the user wants to continue with the current filter
-user_make_sure("\nAre you sure you want to updated these groups[y/n]? ")
+
 # loop through each group and update
 payload = None
+change_validation = False
 for group, group_values in groups_to_update.iteritems():
     group_id = group_values[0]
+    if options.data:
+        req_type = 'GET'
+        message = "retrieving data for group: {}".format(group)
+        req_path = "{}/{}".format(base_path, group_id)
+
     # handle suspension request
-    if options.suspend is not None or options.unsuspend is not None:
+    elif options.suspend is not None or options.unsuspend is not None:
         req_path = "{}/{}/suspension".format(base_path, group_id)
         payload = '{"processes":["AUTO_SCALE"]}'
         if options.suspend is not None:
@@ -383,15 +389,21 @@ for group, group_values in groups_to_update.iteritems():
     else:
         errorAndExit("could not find a proper update command, please check the script input flags!\n")
 
-
+    # make sure the user wants to continue with the current filter
+    if not change_validation:
+        user_make_sure("\nAre you sure you want to updated these groups[y/n]? ")
+        change_validation = True
     print_header(group)
     print message
     res = query_api(req_path, token, req_type, payload)
     if res.status_code == 200:
-        print_in_color('green', "Update was successful!")
+        if options.data is not None:
+            print res.content
+        else:
+            print_in_color('green', "Update was successful!")
     else:
         data = loads(res.content)
         print_in_color('red', "Error while updating group!\nstatus code: {}, reason: {}\n".format(res.status_code, data['response']['errors'][0]['message']))
 
-    print_message("Done updating all groups!")
+print_message("Done running on all groups!")
 
