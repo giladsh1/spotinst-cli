@@ -7,6 +7,7 @@ spotinst-cli has the following flags -
 ```
   -h, --help                   show this help message and exit
   -g GREP, --grep=GREP         text to filter groups by
+  -d, --get-data               get groups data from spotinst
   -u UNGREP, --ungrep=UNGREP   text to exclude groups
   -l, --list                   show group list and exit
   --min=MIN                    update group minimum capacity, must supply with max and target
@@ -22,6 +23,7 @@ spotinst-cli has the following flags -
   --replace-ami=AMI            replace AMI for group
   --user-data=USER_DATA        updated user data - supply a file path which contains the user data script (cloud init)
   --detach-batch               detach all instances for specific batch - choose from a list of batches
+  -y, --skip-validation        skip prompt validation for non-interactive mode
 ```
 ### Example usage
 #### list groups with name filter:
