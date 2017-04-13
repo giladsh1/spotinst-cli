@@ -32,22 +32,22 @@ spotinst-cli has the following flags -
 #### list groups with name filter:
 ![](docs/list_groups.png)
 
-#### get groups data:
+#### get data:
 ![](docs/get_data.png)
 
-#### get groups status:
+#### get status:
 ![](docs/get_status.png)
 
-#### get groups suspension status:
+#### get suspension status:
 ![](docs/suspension_status.png)
 
-#### update group's capacity:
+#### update capacity:
 ![](docs/update_capacity.png)
 
 #### scale up:
 ![](docs/scale_up.png)
 
-#### replace group AMI:
+#### replace AMI:
 ![](docs/replace-ami.png)
 
 #### detach specific batch:
