@@ -3,11 +3,13 @@ spotinst-cli is is an interactive command line tool which allows you to to contr
 
 ### Usage  
 
-spotinst-cli has the following flags - 
+spotinst-cli has the following flags -
 ```
   -h, --help                   show this help message and exit
   -g GREP, --grep=GREP         text to filter groups by
   -d, --get-data               get groups data from spotinst
+  -s, --get-status             get groups status  
+  --suspension-status          get groups suspension status  
   -u UNGREP, --ungrep=UNGREP   text to exclude groups
   -l, --list                   show group list and exit
   --min=MIN                    update group minimum capacity, must supply with max and target
@@ -25,11 +27,21 @@ spotinst-cli has the following flags -
   --detach-batch               detach all instances for specific batch - choose from a list of batches
   -y, --skip-validation        skip prompt validation for non-interactive mode
 ```
+
 ### Example usage
 #### list groups with name filter:
 ![](docs/list_groups.png)
 
-#### update group's capcity:
+#### get groups data:
+![](docs/get_data.png)
+
+#### get groups status:
+![](docs/get_status.png)
+
+#### get groups suspension status:
+![](docs/suspension_status.png)
+
+#### update group's capacity:
 ![](docs/update_capacity.png)
 
 #### scale up:
@@ -40,5 +52,3 @@ spotinst-cli has the following flags -
 
 #### detach specific batch:
 ![](docs/detach_batch.png)
-
-
