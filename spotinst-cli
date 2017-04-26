@@ -421,7 +421,7 @@ for group, group_values in groups_to_update.iteritems():
     print message
     res = query_api(req_path, token, req_type, payload)
     if res.status_code == 200:
-        if options.data is not None:
+        if options.data != "":
             print res.content
         else:
             print_in_color('green', "Update was successful!")
