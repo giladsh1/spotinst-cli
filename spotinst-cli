@@ -406,7 +406,7 @@ for group, group_values in groups_to_update.iteritems():
         message = "sending a request to update the user data script..."
 
     else:
-        errorAndExit("could not find a proper update command, please check the script input flags!\n")
+        exit()
 
     # make sure the user wants to continue with the current filter (unless the req type is GET)
     if not change_validation and req_type != 'GET':
@@ -421,7 +421,7 @@ for group, group_values in groups_to_update.iteritems():
     print message
     res = query_api(req_path, token, req_type, payload)
     if res.status_code == 200:
-        if options.data != "":
+        if req_type == 'GET':
             print res.content
         else:
             print_in_color('green', "Update was successful!")
