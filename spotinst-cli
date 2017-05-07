@@ -242,11 +242,8 @@ if options.max is not None and options.min is not None and options.target is not
 
 # set spotinst main path and check spotinst token
 base_path = "https://api.spotinst.io/aws/ec2/group"
-token = ""
-try:
-    token = environ.get('spotinst_token')
-except:
-    errorAndExit("you must define an environment variable called 'spotinst_token' with a valid token (use export or .bashrc file)!")
+token = environ.get('spotinst_token')
+if not token: errorAndExit("you must define an environment variable called 'spotinst_token' with a valid token (use export or .bashrc file)!")
 
 # handle the kill batch option
 if options.detach_batch:
