@@ -213,6 +213,7 @@ parser.add_option("--roll", action="store_true", dest="roll", help="roll a group
 parser.add_option("--batch-size", action="store", dest="batch", type=int, help="roll batch size - must supply with the roll flag")
 parser.add_option("--grace-period", action="store", dest="grace", type=int, help="roll grace period - must supply with the roll flag")
 parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI for group")
+parser.add_option("--replace-health", action="store", dest="health", choices=['EC2', 'ELB', "HCS"], help="replace health check type for a group")
 parser.add_option("--user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
 parser.add_option("--detach-batch", action="store_true", dest="detach_batch", help="detach all instances for specific batch - choose from a list of batches")
 parser.add_option("-y", "--skip-validation", action="store_true", dest="skip_validation", help="skip prompt validation for non-interactive mode")
@@ -383,11 +384,15 @@ for group, group_values in groups_to_update.iteritems():
         message = "rolling group: {} with batch-size: {} and a grace period: {}".format(group, options.batch, options.grace)
 
     # handle replace ami
-    elif options.ami is not None:
+    elif options.ami is not None or options.health is not None:
         req_type = 'PUT'
         req_path = "{}/{}".format(base_path, group_id)
-        payload = dumps({ "group": { "compute": { "launchSpecification": { "imageId": options.ami  }}}})
-        message = "replacing AMI for {}".format(group)
+        if options.ami is not None:
+            payload = dumps({ "group": { "compute": { "launchSpecification": { "imageId": options.ami  }}}})
+            message = "replacing AMI for {}".format(group)
+        else:
+            payload = dumps({"group": {"compute": {"launchSpecification": {"healthCheckType": options.health}}}})
+            message = "replacing health check type for {}".format(group)
 
     # handle replace of user data script
     elif options.user_data is not None:
