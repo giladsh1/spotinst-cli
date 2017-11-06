@@ -10,6 +10,8 @@ from os import system, environ
 from sys import argv, stdout
 from os import path
 from base64 import b64encode, b64decode
+from prettytable import PrettyTable
+from requests import put, get, post, delete
 
 
 # This function prints error and exits
@@ -49,7 +51,7 @@ def print_header(text):
 
 
 # This function queries spotinst API endpoint
-def query_api(api_url,
+def query_api(api_url, 
               spotinst_token,
               req_method='GET',
               req_payload=None,
@@ -76,8 +78,9 @@ def query_api(api_url,
 
 # This function returns a groups dict, filtered by name (contains) or all if parameter is empty
 def get_groups(grep_term, ungrep_term):
-    print "\nQuerying spotinst API, hold on..."
-    result  = query_api(base_path, token)
+    if not options.json:
+        print "\nQuerying spotinst API, hold on..."
+    result = query_api(base_path, token, account=account)
     data = loads(result.content)
     groups_dict = {}
     all_groups = data['response']['items']
@@ -98,7 +101,9 @@ def get_groups(grep_term, ungrep_term):
 
 # This function prints groups as a table
 def print_all_groups(groups_to_print):
-    table = PrettyTable(['#' ,'Group name', 'ID', 'Min', 'Target', 'Max'])
+    if options.json:
+        return
+    table = PrettyTable(['#', 'Group name', 'ID', 'Min', 'Target', 'Max'])
     table.align = "l"
     table.border = True
     counter = 1
@@ -150,6 +155,8 @@ def check_change_in_target(group_name, current_group_target, desired_group_targe
 
 # This function prints a message surrounded by #
 def print_message(msg):
+    if options.json:
+        return
     all_lines = msg.splitlines()
     longest_line = 0
     for line in all_lines:
@@ -183,8 +190,7 @@ def get_yes_no_from_user(question):
         return False
 
 
-
-##### MAIN ####
+# MAIN
 # check required pip packages
 pip_installed = False
 packages = []
@@ -197,8 +203,6 @@ except ImportError:
     errorAndExit("you must install python-pip before using this script")
 check_package_is_installed("prettytable")
 check_package_is_installed("requests")
-from prettytable import PrettyTable
-from requests import put, get, post, delete
 
 # define help and options
 usage = "Usage: %prog [options]"
@@ -223,6 +227,7 @@ parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI
 parser.add_option("--replace-health", action="store", dest="health", choices=['EC2', 'ELB', "HCS"], help="replace health check type for a group")
 parser.add_option("--user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
 parser.add_option("--detach-batch", action="store_true", dest="detach_batch", help="detach all instances for specific batch - choose from a list of batches")
+parser.add_option("-j", "--json", action="store_true", dest="json", help="output pure json -- useful for piping into json parsers like jq")
 parser.add_option("-y", "--skip-validation", action="store_true", dest="skip_validation", help="skip prompt validation for non-interactive mode")
 parser.add_option("-a", "--account", action="store", dest="account", help="provider account id - if none is specified, the default account for the Organization will be used")
 (options, args) = parser.parse_args()
@@ -291,7 +296,7 @@ if options.detach_batch:
         for batch in batches:
             print "[{}] {}".format(counter, batch)
             counter += 1
-        batch_number =  raw_input("\nWhich batch would you like to kill? ")
+        batch_number = raw_input("\nWhich batch would you like to kill? ")
         try:
             batch_to_detach = batches[int(batch_number) - 1]
         except Exception as e:
@@ -325,7 +330,8 @@ if options.detach_batch:
 groups_to_update = get_groups(options.grep, options.ungrep)
 if len(groups_to_update) == 0:
     errorAndExit("could not find any groups for the search term: {}".format(options.grep))
-print_all_groups(groups_to_update)
+if not options.json:
+    print_all_groups(groups_to_update)
 # if the list flag was triggered, need to exit
 if options.list is not None:
     exit()
@@ -450,5 +456,6 @@ for group, group_values in groups_to_update.iteritems():
         data = loads(res.content)
         print_in_color('red', "Error while updating group!\nstatus code: {}, reason: {}\n".format(res.status_code, data['response']['errors'][0]['message']))
 
-print_message("Done running on all groups!")
+if not options.json:
+    print_message("Done running on all groups!")
 
