@@ -49,12 +49,19 @@ def print_header(text):
 
 
 # This function queries spotinst API endpoint
-def query_api(api_url, spotinst_token, req_method='GET', req_payload=None):
+def query_api(api_url,
+              spotinst_token,
+              req_method='GET',
+              req_payload=None,
+              account=None):
     try:
         headers = {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer %s' % spotinst_token,
         }
+
+        if account is not None:
+            api_url = api_url + "?accountId=%s" % account
         if req_method == 'GET':
             return get(api_url, headers=headers)
         elif req_method == 'PUT':
@@ -217,6 +224,7 @@ parser.add_option("--replace-health", action="store", dest="health", choices=['E
 parser.add_option("--user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
 parser.add_option("--detach-batch", action="store_true", dest="detach_batch", help="detach all instances for specific batch - choose from a list of batches")
 parser.add_option("-y", "--skip-validation", action="store_true", dest="skip_validation", help="skip prompt validation for non-interactive mode")
+parser.add_option("-a", "--account", action="store", dest="account", help="provider account id - if none is specified, the default account for the Organization will be used")
 (options, args) = parser.parse_args()
 
 # show help as default and exit
@@ -244,7 +252,17 @@ if options.max is not None and options.min is not None and options.target is not
 # set spotinst main path and check spotinst token
 base_path = "https://api.spotinst.io/aws/ec2/group"
 token = environ.get('spotinst_token')
-if not token: errorAndExit("you must define an environment variable called 'spotinst_token' with a valid token (use export or .bashrc file)!")
+if not token:
+    errorAndExit("you must define an environment variable called 'spotinst_token' with a valid token (use export or .bashrc file)!")
+
+if options.account is not None:
+    account = options.account
+elif environ.get('spotinst_account') is not None:
+    account = environ.get('spotinst_account')
+elif environ.get('SPOTINST_ACCOUNT') is not None:
+    account = environ.get('SPOTINST_ACCOUNT')
+else:
+    account = None
 
 # handle the kill batch option
 if options.detach_batch:
@@ -255,7 +273,7 @@ if options.detach_batch:
     group_id = kill_in_group[1][0]
     group_name = kill_in_group[0]
     req_path = "{}/{}/status".format(base_path, group_id)
-    res = query_api(req_path, token, 'GET', '')
+    res = query_api(req_path, token, 'GET', '', account)
     # get the group instances
     if res.status_code != 200:
         data = loads(res.content)
@@ -295,7 +313,7 @@ if options.detach_batch:
         payload = dumps ({ "instancesToDetach": instances_to_kill, "shouldTerminateInstances" : terminate, "shouldDecrementTargetCapacity" : decrement })
         print_header(group_name)
         print "\nGoing to detach (terminate) the above instances..."
-        res = query_api(req_path, token, 'PUT', payload)
+        res = query_api(req_path, token, 'PUT', payload, account)
         if res.status_code != 200:
             data = loads(res.content)
             print_in_color('red', "Error while getting the group status!\nstatus code: {}, reason: {}\n".format(res.status_code, data['response']['errors'][0]['message']))
@@ -419,9 +437,10 @@ for group, group_values in groups_to_update.iteritems():
         change_validation = True
 
     # send request
-    print_header(group)
-    print message
-    res = query_api(req_path, token, req_type, payload)
+    if not options.json:
+        print_header(group)
+        print message
+    res = query_api(req_path, token, req_type, payload, account)
     if res.status_code == 200:
         if req_type == 'GET':
             print res.content
