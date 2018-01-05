@@ -78,7 +78,7 @@ def query_api(api_url,
 
 # This function returns a groups dict, filtered by name (contains) or all if parameter is empty
 def get_groups(grep_term, ungrep_term):
-    if not options.json:
+    if not options.json and not options.quiet:
         print "\nQuerying spotinst API, hold on..."
     result = query_api(base_path, token, account=account)
     data = loads(result.content)
@@ -101,7 +101,11 @@ def get_groups(grep_term, ungrep_term):
 
 # This function prints groups as a table
 def print_all_groups(groups_to_print):
-    if options.json:
+    if options.json or options.quiet:
+        # The groups_to_print data structure doesn't render particularly good
+        # json.  It could stand to be reworked somewhat to have names for the
+        # values.
+        # print dumps(groups_to_print)
         return
     table = PrettyTable(['#', 'Group name', 'ID', 'Min', 'Target', 'Max'])
     table.align = "l"
@@ -155,7 +159,7 @@ def check_change_in_target(group_name, current_group_target, desired_group_targe
 
 # This function prints a message surrounded by #
 def print_message(msg):
-    if options.json:
+    if options.json or options.quiet:
         return
     all_lines = msg.splitlines()
     longest_line = 0
@@ -230,6 +234,7 @@ parser.add_option("--detach-batch", action="store_true", dest="detach_batch", he
 parser.add_option("-j", "--json", action="store_true", dest="json", help="output pure json -- useful for piping into json parsers like jq")
 parser.add_option("-y", "--skip-validation", action="store_true", dest="skip_validation", help="skip prompt validation for non-interactive mode")
 parser.add_option("-a", "--account", action="store", dest="account", help="provider account id - if none is specified, the default account for the Organization will be used")
+parser.add_option("-q", "--quiet", action="store_true", dest="quiet", help="do not print headers and labels")
 (options, args) = parser.parse_args()
 
 # show help as default and exit
@@ -456,6 +461,6 @@ for group, group_values in groups_to_update.iteritems():
         data = loads(res.content)
         print_in_color('red', "Error while updating group!\nstatus code: {}, reason: {}\n".format(res.status_code, data['response']['errors'][0]['message']))
 
-if not options.json:
+if not options.json or not options.quiet:
     print_message("Done running on all groups!")
 
