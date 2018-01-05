@@ -225,6 +225,7 @@ parser.add_option("--scale-down", action="store", dest="scale_down", type=int, h
 parser.add_option("--suspend", action="store_true", dest="suspend", help="suspend group activities")
 parser.add_option("--unsuspend", action="store_true", dest="unsuspend", help="unsuspend group activities")
 parser.add_option("--roll", action="store_true", dest="roll", help="roll a group, must supply batch-size, and grace-period")
+parser.add_option("--roll-status", action="store_true", dest="rollstatus", help="check the status of deployments")
 parser.add_option("--batch-size", action="store", dest="batch", type=int, help="roll batch size - must supply with the roll flag")
 parser.add_option("--grace-period", action="store", dest="grace", type=int, help="roll grace period - must supply with the roll flag")
 parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI for group")
@@ -429,6 +430,14 @@ for group, group_values in groups_to_update.iteritems():
         req_path = "{}/{}/roll".format(base_path, group_id)
         payload = dumps({ "batchSizePercentage" : options.batch, "gracePeriod" : options.grace })
         message = "rolling group: {} with batch-size: {} and a grace period: {}".format(group, options.batch, options.grace)
+
+    # handle a roll status request
+    elif options.rollstatus is not None:
+        # http://docs.spotinst.com/#page:amazon-web-services,header:amazon-web-services-elastigroups-get-3
+        # GET /aws/ec2/group/{GROUP_ID}/roll
+        req_type = 'GET'
+        req_path = "{}/{}/roll".format(base_path,group_id)
+        message = "getting deployment status for group: {}".format(group)
 
     # handle replace ami
     elif options.ami is not None or options.health is not None:
