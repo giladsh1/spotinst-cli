@@ -235,7 +235,7 @@ parser.add_option("--get-user-data", action="store_true", dest="get_user_data", 
 parser.add_option("--detach-batch", action="store_true", dest="detach_batch", help="detach all instances for specific batch - choose from a list of batches")
 parser.add_option("-j", "--json", action="store_true", dest="json", help="output pure json -- useful for piping into json parsers like jq")
 parser.add_option("-y", "--skip-validation", action="store_true", dest="skip_validation", help="skip prompt validation for non-interactive mode")
-parser.add_option("-a", "--account", action="store", dest="account", help="provider account id - if none is specified, the default account for the Organization will be used")
+parser.add_option("-a", "--account", action="store", dest="account", help="spotinst account id environment variable label - define an environment variable like spotinst_account_prod=\"act-asdfasdf\" and call with \"-a prod\"; SpotInst account ids can be found in the web interface under Settings > Account")
 parser.add_option("-q", "--quiet", action="store_true", dest="quiet", help="do not print headers and labels")
 (options, args) = parser.parse_args()
 
@@ -268,7 +268,9 @@ if not token:
     errorAndExit("you must define an environment variable called 'spotinst_token' with a valid token (use export or .bashrc file)!")
 
 if options.account is not None:
-    account = options.account
+    envvar="spotinst_account_%s" % options.account
+    # account = options.account
+    account = environ.get(envvar)
 elif environ.get('spotinst_account') is not None:
     account = environ.get('spotinst_account')
 elif environ.get('SPOTINST_ACCOUNT') is not None:
