@@ -335,8 +335,7 @@ if options.detach_batch:
 groups_to_update = get_groups(options.grep, options.ungrep)
 if len(groups_to_update) == 0:
     errorAndExit("could not find any groups for the search term: {}".format(options.grep))
-if not options.json:
-    print_all_groups(groups_to_update)
+print_all_groups(groups_to_update)
 # if the list flag was triggered, need to exit
 if options.list is not None:
     exit()
