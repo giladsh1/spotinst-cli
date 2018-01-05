@@ -17,8 +17,8 @@ spotinst-cli has the following flags -
   --max=MAX                    update group maximum capacity, must supply with min and target
   --scale-up=SCALE_UP          scale up group by X number of instances
   --scale-down=SCALE_DOWN      scale down group by X number of instances
-  --suspend                    suspend group activities
-  --unsuspend                  unsuspend group activities
+  --suspend                    suspend group activities, must supply AUTO_SCALE or AUTO_HEALING
+  --unsuspend                  unsuspend group activities, must supply AUTO_SCALE or AUTO_HEALING
   --roll                       roll a group, must supply batch-size, and grace-period
   --batch-size=BATCH           roll batch size - must supply with the roll flag
   --grace-period=GRACE         roll grace period - must supply with the roll flag
