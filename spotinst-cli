@@ -77,7 +77,7 @@ def query_api(api_url,
 
 
 # This function returns a groups dict, filtered by name (contains) or all if parameter is empty
-def get_groups(grep_term, ungrep_term):
+def get_groups(grep_list, ungrep_list):
     if not options.json and not options.quiet:
         print "\nQuerying spotinst API, hold on..."
     result = query_api(base_path, token, account=account)
@@ -88,12 +88,8 @@ def get_groups(grep_term, ungrep_term):
         # check if the spot_group_name parameter is not empty
         # is so, need to return only the groups that matches the search
         group_name = group['name'].lower()
-        if ungrep_term == "":
-            if grep_term.lower() in group_name:
-                groups_dict[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
-        else:
-            if ungrep_term.lower() not in group_name and grep_term.lower() in group_name:
-                groups_dict[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
+        if [n for n in grep_list if n in group_name] and not [n for n in ungrep_list if n in group_name]:
+            groups_dict[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
     # sort the list by name
     sorted_inst = OrderedDict(sorted(groups_dict.items()))
     return sorted_inst
@@ -193,8 +189,11 @@ def get_yes_no_from_user(question):
     else:
         return False
 
+# function to split parsed option to list by comma
+def parser_split(option, opt, value, parser):
+    setattr(parser.values, option.dest, value.split(','))
 
-# MAIN
+##### MAIN ####
 # check required pip packages
 pip_installed = False
 packages = []
@@ -211,11 +210,11 @@ check_package_is_installed("requests")
 # define help and options
 usage = "Usage: %prog [options]"
 parser = OptionParser(usage)
-parser.add_option("-g", "--grep", action="store", dest="grep", default="", help="text to filter groups by")
+parser.add_option("-g", "--grep", type="string", action="callback", dest="grep", callback=parser_split, default="", help="text to filter groups by")
 parser.add_option("-d", "--get-data", action="store_true", dest="data", default="", help="get groups data")
 parser.add_option("-s", "--get-status", action="store_true", dest="status", default="", help="get groups status")
 parser.add_option("--suspension-status", action="store_true", dest="suspension", default="", help="get groups suspension status")
-parser.add_option("-u", "--ungrep", action="store", default="", dest="ungrep", help="text to exclude groups")
+parser.add_option("-u", "--ungrep", type="string", action="callback", default="", callback=parser_split, dest="ungrep", help="text to exclude groups")
 parser.add_option("-l", "--list", action="store_true", dest="list", help="show group list and exit")
 parser.add_option("--min", action="store", dest="min", type=int, help="update group minimum capacity, must suuply with max and target")
 parser.add_option("--target", action="store", dest="target", type=int, help="update group target capacity, must supply with min and max")
