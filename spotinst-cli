@@ -84,12 +84,16 @@ def get_groups(grep_list, ungrep_list):
     data = loads(result.content)
     groups_dict = {}
     all_groups = data['response']['items']
-    for group in all_groups:
-        # check if the spot_group_name parameter is not empty
-        # is so, need to return only the groups that matches the search
-        group_name = group['name'].lower()
-        if [n for n in grep_list if n in group_name] and not [n for n in ungrep_list if n in group_name]:
+    if len(grep_list) == 0:
+        for group in all_groups:
             groups_dict[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
+    else:
+        for group in all_groups:
+            # check if the spot_group_name parameter is not empty
+            # is so, need to return only the groups that matches the search
+            group_name = group['name'].lower()
+            if [n for n in grep_list if n.lower() in group_name] and not [n for n in ungrep_list if n.lower() in group_name]:
+                groups_dict[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
     # sort the list by name
     sorted_inst = OrderedDict(sorted(groups_dict.items()))
     return sorted_inst
