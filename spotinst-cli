@@ -135,7 +135,7 @@ def calc_percentage_change(old_val, new_val):
 def check_change_in_target(group_name, current_group_target, desired_group_target, alert_threshold):
     target_change = calc_percentage_change(current_group_target, desired_group_target)
     ans_change = "y"
-    if int(target_change) >= alert_threshold:
+    if int(target_change) >= alert_threshold and not options.skip_validation:
         print "{} target value is: {}, requested target is: {}.".format(group_name, current_group_target, desired_group_target)
         ans_change = raw_input("This represent a change of over 30%, are you sure you want to proceed? [y/n] ")
     return ans_change
