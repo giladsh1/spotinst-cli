@@ -10,6 +10,7 @@ from os import system, environ
 from sys import argv, stdout
 from os import path
 from base64 import b64encode, b64decode
+from commands import getoutput, getstatusoutput
 
 
 # This function prints error and exits
@@ -178,14 +179,16 @@ def parser_split(option, opt, value, parser):
 ##### MAIN ####
 # check required pip packages
 pip_installed = False
-packages = []
-try:
-    from pip import get_installed_distributions
-    pip_installed = True
-    installed_packages = get_installed_distributions()
-    packages = [package.project_name for package in installed_packages]
-except ImportError:
-    errorAndExit("you must install python-pip before using this script")
+packages = [pkg.split('==')[0] for pkg in getoutput('pip freeze').split('\n')]
+required_packages = ['prettytable', 'requests']
+pip_version = getstatusoutput('pip -V')
+if pip_version[0] != 0:
+    errorAndExit("python-pip is not installed, please install it before using this tool!\n"
+        "On MacOS, you can install it using one of the following:\n"
+        "'brew install python' or 'sudo easy_install pip")
+if 'python 2.7' not in pip_version[1]:
+    errorAndExit("This script currently supports python 2.7 only!")
+
 check_package_is_installed("prettytable")
 check_package_is_installed("requests")
 from prettytable import PrettyTable
