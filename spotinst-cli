@@ -339,6 +339,7 @@ for group, group_values in groups_to_update.iteritems():
 
     # handle suspension request
     elif options.suspend is not None or options.unsuspend is not None:
+        BOTH=['AUTO_HEALING','AUTO_SCALE']
         req_path = "{}/{}/suspension".format(base_path, group_id)
 
         if options.suspend is not None:
