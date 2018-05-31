@@ -208,8 +208,8 @@ parser.add_option("--target", action="store", dest="target", type=int, help="upd
 parser.add_option("--max", action="store", dest="max", type=int, help="update group maximum capacity, must supply with min and target")
 parser.add_option("--scale-up", action="store", dest="scale_up", type=int, help="scale up group by X number of instances")
 parser.add_option("--scale-down", action="store", dest="scale_down", type=int, help="scale down group by X number of instances")
-parser.add_option("--suspend", action="store", choices=['AUTO_SCALE', 'AUTO_HEALING'], dest="suspend", help="suspend scaling or healing for a group")
-parser.add_option("--unsuspend", action="store", dest="unsuspend", choices=['AUTO_SCALE', 'AUTO_HEALING'], help="unsuspend scaling or healing for a group")
+parser.add_option("--suspend", action="store", choices=['AUTO_SCALE', 'AUTO_HEALING', 'BOTH'], dest="suspend", help="suspend scaling or healing for a group, or BOTH to freeze both of them")
+parser.add_option("--unsuspend", action="store", dest="unsuspend", choices=['AUTO_SCALE', 'AUTO_HEALING' , 'BOTH'], help="unsuspend scaling or healing for a group, or BOTH to freeze both of them")
 parser.add_option("--roll", action="store_true", dest="roll", help="roll a group, must supply batch-size, and grace-period")
 parser.add_option("--batch-size", action="store", dest="batch", type=int, help="roll batch size - must supply with the roll flag")
 parser.add_option("--grace-period", action="store", dest="grace", type=int, help="roll grace period - must supply with the roll flag")
@@ -339,17 +339,26 @@ for group, group_values in groups_to_update.iteritems():
 
     # handle suspension request
     elif options.suspend is not None or options.unsuspend is not None:
-        BOTH=['AUTO_HEALING','AUTO_SCALE']
         req_path = "{}/{}/suspension".format(base_path, group_id)
 
         if options.suspend is not None:
-            req_type = 'POST'
-            command = "suspend"
-            payload = '{"processes":["%s"]}' % options.suspend
+            if options.suspend != 'BOTH':
+                req_type = 'POST'
+                command = "suspend"
+                payload = '{"processes":["%s"]}' % options.suspend
+            else:
+                req_type = 'POST'
+                command = "suspend"
+                payload = '{"processes":["AUTO_SCALE","AUTO_HEALING"]}'
         elif options.unsuspend is not None:
-            req_type = 'DELETE'
-            command = "unsuspend"
-            payload = '{"processes":["%s"]}' % options.unsuspend
+            if options.unsuspend != 'BOTH':
+                req_type = 'DELETE'
+                command = "unsuspend"
+                payload = '{"processes":["%s"]}' % options.unsuspend
+            else:
+                req_type = 'DELETE'
+                command = "unsuspend"
+                payload = '{"processes":["AUTO_SCALE","AUTO_HEALING"]}'
 
         message = "sending request to {} the group".format(command)
     # handle scale request
