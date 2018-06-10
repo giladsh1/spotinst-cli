@@ -85,7 +85,24 @@ def get_groups(grep_list, ungrep_list):
     sorted_inst = OrderedDict(sorted(groups_dict.items()))
     return sorted_inst
 
-
+#exact matching
+def get_groups_exact(grep_list, ungrep_list):
+    print "\nQuerying spotinst API, hold on..."
+    result = query_api(base_path, token)
+    data = loads(result.content)
+    groups_dict = {}
+    all_groups = data['response']['items']
+    for group in all_groups:
+        # check if the spot_group_name parameter is not empty
+        # is so, need to return only the groups that matches the search
+        group_name = group['name'].lower()
+        group_name_filter = group_name.split(".")[0]
+        for grep_name in grep_list:
+            if (group_name_filter == grep_name) and not [n for n in ungrep_list if n in group_name]:
+                groups_dict[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
+    # sort the list by name
+    sorted_inst = OrderedDict(sorted(groups_dict.items()))
+    return sorted_inst
 # This function prints groups as a table
 def print_all_groups(groups_to_print):
     table = PrettyTable(['#' ,'Group name', 'ID', 'Min', 'Target', 'Max'])
@@ -208,8 +225,8 @@ parser.add_option("--target", action="store", dest="target", type=int, help="upd
 parser.add_option("--max", action="store", dest="max", type=int, help="update group maximum capacity, must supply with min and target")
 parser.add_option("--scale-up", action="store", dest="scale_up", type=int, help="scale up group by X number of instances")
 parser.add_option("--scale-down", action="store", dest="scale_down", type=int, help="scale down group by X number of instances")
-parser.add_option("--suspend", action="store", choices=['AUTO_SCALE', 'AUTO_HEALING'], dest="suspend", help="suspend scaling or healing for a group")
-parser.add_option("--unsuspend", action="store", dest="unsuspend", choices=['AUTO_SCALE', 'AUTO_HEALING'], help="unsuspend scaling or healing for a group")
+parser.add_option("--suspend", action="store", dest="suspend", choices=['AUTO_SCALE', 'AUTO_HEALING' , 'BOTH'], help="suspend scaling or healing for a group, or BOTH to freeze both of them")
+parser.add_option("--unsuspend", action="store", dest="unsuspend", choices=['AUTO_SCALE', 'AUTO_HEALING' , 'BOTH'], help="unsuspend scaling or healing for a group, or BOTH to freeze both of them")
 parser.add_option("--roll", action="store_true", dest="roll", help="roll a group, must supply batch-size, and grace-period")
 parser.add_option("--batch-size", action="store", dest="batch", type=int, help="roll batch size - must supply with the roll flag")
 parser.add_option("--grace-period", action="store", dest="grace", type=int, help="roll grace period - must supply with the roll flag")
@@ -218,6 +235,9 @@ parser.add_option("--replace-health", action="store", dest="health", choices=['E
 parser.add_option("--user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
 parser.add_option("--detach-batch", action="store_true", dest="detach_batch", help="detach all instances for specific batch - choose from a list of batches")
 parser.add_option("-y", "--skip-validation", action="store_true", dest="skip_validation", help="skip prompt validation for non-interactive mode")
+# my change
+parser.add_option("-e", "--exact", type="string", action="callback", dest="exact", callback=parser_split, help="grep exactly")
+
 (options, args) = parser.parse_args()
 
 # show help as default and exit
@@ -304,11 +324,17 @@ if options.detach_batch:
             print_in_color('green', "\nSuccessfully terminated the required batch!")
     exit()
 
+if options.exact is None:
+    groups_to_update = get_groups(options.grep, options.ungrep)
+    if len(groups_to_update) == 0:
+        errorAndExit("could not find any groups for the search term: {}".format(options.grep))
+    print_all_groups(groups_to_update)
+else:
+    groups_to_update = get_groups_exact(options.exact, options.ungrep)
+    if len(groups_to_update) == 0:
+        errorAndExit("could not find any groups for the search term: {}".format(options.exact))
+    print_all_groups(groups_to_update)
 
-groups_to_update = get_groups(options.grep, options.ungrep)
-if len(groups_to_update) == 0:
-    errorAndExit("could not find any groups for the search term: {}".format(options.grep))
-print_all_groups(groups_to_update)
 # if the list flag was triggered, need to exit
 if options.list is not None:
     exit()
@@ -342,13 +368,23 @@ for group, group_values in groups_to_update.iteritems():
         req_path = "{}/{}/suspension".format(base_path, group_id)
 
         if options.suspend is not None:
-            req_type = 'POST'
-            command = "suspend"
-            payload = '{"processes":["%s"]}' % options.suspend
+            if options.suspend != 'BOTH':
+                req_type = 'POST'
+                command = "suspend"
+                payload = '{"processes":["%s"]}' % options.suspend
+            else:
+                req_type = 'POST'
+                command = "suspend"
+                payload = '{"processes":["AUTO_SCALE","AUTO_HEALING"]}'
         elif options.unsuspend is not None:
-            req_type = 'DELETE'
-            command = "unsuspend"
-            payload = '{"processes":["%s"]}' % options.unsuspend
+            if options.unsuspend != 'BOTH':
+                req_type = 'DELETE'
+                command = "unsuspend"
+                payload = '{"processes":["%s"]}' % options.unsuspend
+            else:
+                req_type = 'DELETE'
+                command = "unsuspend"
+                payload = '{"processes":["AUTO_SCALE","AUTO_HEALING"]}'
 
         message = "sending request to {} the group".format(command)
     # handle scale request
