@@ -98,7 +98,7 @@ def get_groups_exact(grep_list, ungrep_list):
         group_name = group['name'].lower()
         group_name_filter = group_name.split(".")[0]
         for grep_name in grep_list:
-            if group_name_filter.startswith(grep_name) and not [n for n in ungrep_list if n in group_name]:
+            if (group_name_filter == grep_name) and not [n for n in ungrep_list if n in group_name]:
                 groups_dict[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
     # sort the list by name
     sorted_inst = OrderedDict(sorted(groups_dict.items()))
