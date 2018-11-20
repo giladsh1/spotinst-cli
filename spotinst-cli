@@ -146,10 +146,10 @@ def print_message(msg):
         if len(line.strip()) > longest_line:
             longest_line = len(line.strip())
     padding = 8
-    print "\n" + ("#" * (longest_line + padding))
+    print "\n" + ("-" * (longest_line + padding))
     for line in msg.splitlines():
         print (" " * (padding / 2)) + line
-    print ("#" * (longest_line + padding)) + "\n"
+    print ("-" * (longest_line + padding)) + "\n"
 
 
 # This function makes sure the user wants to process with his choice
@@ -417,7 +417,7 @@ for group, group_values in groups_to_update.iteritems():
     # make sure the user wants to continue with the current filter (unless the req type is GET)
     if not change_validation and req_type != 'GET':
         if not options.skip_validation:
-            user_make_sure("\nAre you sure you want to updated these groups[y/n]? ")
+            user_make_sure("\nAre you sure you want to updated these groups [y/n]? ")
         else:
             print "Found skip validation option, skipping user prompt..."
         change_validation = True
