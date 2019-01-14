@@ -11,6 +11,16 @@ from sys import argv, stdout
 from os import path
 from base64 import b64encode, b64decode
 from commands import getoutput, getstatusoutput
+from threading import Thread
+from pkg_resources import DistributionNotFound
+
+
+# This function opens a thread with args
+def open_thread(thread_target,thread_args):
+    t = Thread(target=thread_target, args = (thread_args))
+    t.daemon = True
+    t.start()
+    processes.append(t)
 
 
 # This function prints error and exits
@@ -18,23 +28,18 @@ def errorAndExit(exception_message):
     print "\nERROR - %s" %(exception_message)
     exit()
 
-# This function checks if a package is installed and prints a message if necessary
-def check_package_is_installed(package_name):
-    if not package_name in packages:
-        errorAndExit("{} is not installed, please run 'sudo pip install {}' and try again.".format(package_name,package_name))
+
+# This function changes the color of the prompt
+def change_prompt_color(color):
+    colors = {
+        'red': "\033[1;31m",
+        'green': "\033[0;32m",
+        'normal': "\033[0;0m"
+    }
+    stdout.write(colors.get(color))
 
 
-# This function changes the color of the text in the terminal
-def change_prompt_color(which_color):
-    if which_color == 'red':
-        stdout.write("\033[1;31m")
-    elif which_color == 'green':
-        stdout.write("\033[0;32m")
-    elif which_color == 'normal':
-        stdout.write("\033[0;0m")
-
-
-# This function prints a message in green/red and returns back to white text
+# This function prints a text in color and returns to normal
 def print_in_color(color, msg):
     change_prompt_color(color)
     print msg
@@ -47,6 +52,26 @@ def print_header(text):
     print "\n" + ("=" * text_len)
     print text
     print ("=" * text_len)
+
+
+# This function queries spotinst API endpoint and returns the result to a queue
+def query_thread(queue, group, api_url, spotinst_token, req_method='GET', req_payload=None):
+    try:
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer %s' % spotinst_token,
+        }
+        if req_method == 'GET':
+            result = get(api_url, headers=headers)
+        elif req_method == 'PUT':
+            result = put(api_url, headers=headers, data=req_payload)
+        elif req_method == 'POST':
+            result = post(api_url, headers=headers, data=req_payload)
+        elif req_method == 'DELETE':
+            result = delete(api_url, headers=headers, data=req_payload)
+        queue.append([req_method, result, group])
+    except Exception as e:
+        errorAndExit(e.message)
 
 
 # This function queries spotinst API endpoint
@@ -71,7 +96,9 @@ def query_api(api_url, spotinst_token, req_method='GET', req_payload=None):
 # This function returns a groups dict, filtered by name (contains) or all if parameter is empty
 def get_groups(grep_list, ungrep_list):
     print "\nQuerying spotinst API, hold on..."
-    result  = query_api(base_path, token)
+    result  = query_api(base_api_path, token)
+    if result.status_code > 299:
+        errorAndExit("bad response from Spotinst!\n%s" % result.content)
     data = loads(result.content)
     groups_dict = {}
     all_groups = data['response']['items']
@@ -100,24 +127,6 @@ def print_all_groups(groups_to_print):
     print table
 
 
-# This function asks the user to choose a specific group from a list
-def get_specific_group(grep_term, ungrep_term):
-    groups_to_update = get_groups(grep_term, ungrep_term)
-    # check if filter has more than one list and ask the user to choose a group
-    if len(groups_to_update) > 1 and options.list is None:
-        print_all_groups(groups_to_update)
-        ans = raw_input("\nWhich group would you like to update?\nGroup number: ")
-        try:
-            group_name = list(groups_to_update)[int(ans) - 1]
-            group_values = groups_to_update[group_name]
-        except:
-            errorAndExit("no such group exists!")
-    else:
-        group_name = list(groups_to_update)[0]
-        group_values = groups_to_update[group_name]
-    return [group_name, group_values]
-
-
 # This function calculates the percentage change between two given numbers
 def calc_percentage_change(old_val, new_val):
     percentage_change = 0
@@ -127,6 +136,7 @@ def calc_percentage_change(old_val, new_val):
         return abs(percentage_change)
     except Exception as e:
         return percent_alert_threshold
+
 
 # This function checks for changes in the group target and alerts the user
 def check_change_in_target(group_name, current_group_target, desired_group_target, alert_threshold):
@@ -172,25 +182,36 @@ def get_yes_no_from_user(question):
     else:
         return False
 
+
 # function to split parsed option to list by comma
 def parser_split(option, opt, value, parser):
     setattr(parser.values, option.dest, value.split(','))
 
-##### MAIN ####
-# check required pip packages
-pip_installed = False
-packages = [pkg.split('==')[0] for pkg in getoutput('pip freeze').split('\n')]
-required_packages = ['prettytable', 'requests']
-pip_version = getstatusoutput('pip -V')
-if pip_version[0] != 0:
-    errorAndExit("python-pip is not installed, please install it before using this tool!\n"
-        "On MacOS, you can install it using one of the following:\n"
-        "'brew install python' or 'sudo easy_install pip")
-if 'python 2.7' not in pip_version[1]:
-    errorAndExit("This script currently supports python 2.7 only!")
 
-check_package_is_installed("prettytable")
-check_package_is_installed("requests")
+# function to validate pip packages
+def validate_pip_packages():
+    pip_version = getstatusoutput('pip -V')
+    if pip_version[0] != 0:
+        errorAndExit("python-pip is not installed, please install it before using this tool!\n"
+                     "On MacOS, you can install it using one of the following:\n"
+                     "'brew install python' or 'sudo easy_install pip")
+
+    if 'python 2.7' not in pip_version[1]:
+        errorAndExit("This script currently supports python 2.7 only!")
+
+    installed_packages = [pkg.split('==')[0] for pkg in getoutput('pip freeze').split('\n')]
+    required_packages = ['prettytable', 'requests']
+    try:
+        for pkg in required_packages:
+            if pkg not in installed_packages:
+                raise  DistributionNotFound
+    except DistributionNotFound:
+        errorAndExit("One of the required pip packages is not installed!\n"
+                     "Please install all packages using the following command in the project's root folder:\n"
+                     "pip install -r requirements.txt --user --upgrade")
+
+##### MAIN ####
+validate_pip_packages()
 from prettytable import PrettyTable
 from requests import put, get, post, delete
 
@@ -225,9 +246,10 @@ if len(argv) == 1:
     system("python " + argv[0] + " -h")
     exit()
 
-
 # global variables
 percent_alert_threshold = 30
+processes = []
+requests_queue = []
 
 # validate input
 if options.max is not None and (options.min is None or options.target is None):
@@ -243,79 +265,24 @@ if options.max is not None and options.min is not None and options.target is not
         errorAndExit("check input - the number makes no sense!")
 
 # set spotinst main path and check spotinst token
-base_path = "https://api.spotinst.io/aws/ec2/group"
+base_api_path = "https://api.spotinst.io/aws/ec2/group"
 token = environ.get('spotinst_token')
-if not token: errorAndExit("you must define an environment variable called 'spotinst_token' with a valid token (use export or .bashrc file)!")
+if not token:
+    errorAndExit("you must define an environment variable called 'spotinst_token' with a valid token (use export or .bashrc file)!")
 
-# handle the kill batch option
-if options.detach_batch:
-    if options.skip_validation:
-        errorAndExit("the skip validation option is not valid with the --detach-batch option!")
-    # first get a specific group
-    kill_in_group = get_specific_group(options.grep, options.ungrep)
-    group_id = kill_in_group[1][0]
-    group_name = kill_in_group[0]
-    req_path = "{}/{}/status".format(base_path, group_id)
-    res = query_api(req_path, token, 'GET', '')
-    # get the group instances
-    if res.status_code != 200:
-        data = loads(res.content)
-        print_in_color('red', "Error while getting the group status!\nstatus code: {}, reason: {}\n".format(res.status_code, data['response']['errors'][0]['message']))
-    else:
-        # find which instances has the create date supplied by the user
-        batches = []
-        data = loads(res.content)
-        for instance in data['response']['items']:
-            if not instance['createdAt'] in batches:
-                batches.append(instance['createdAt'])
-        batches = sorted(batches)
-        print "\nFound the following batches for the group: {}\n".format(group_name)
-        counter = 1
-        for batch in batches:
-            print "[{}] {}".format(counter, batch)
-            counter += 1
-        batch_number =  raw_input("\nWhich batch would you like to kill? ")
-        try:
-            batch_to_detach = batches[int(batch_number) - 1]
-        except Exception as e:
-            errorAndExit("no such batch exists!")
-
-        instances_to_kill = []
-        for instance in data['response']['items']:
-            if batch_to_detach in instance['createdAt']:
-                instances_to_kill.append(instance['instanceId'])
-
-        # finally send a request to detach instances
-        print "\nFound {} relevant instances for the group: {}\nInstances ID's:".format(len(instances_to_kill), group_name)
-        for i in instances_to_kill:
-            print "{} ".format(i),
-        user_make_sure ("\n\nAre you sure you want to detach the above instances? [y/n] ")
-        decrement = get_yes_no_from_user("\nDo you want to decrement the capacity of the group? [y/n] ")
-        terminate = get_yes_no_from_user("\nDo you want to terminate the above instances (or just remove from group)? [y/n] ")
-        req_path = "{}/{}/detachInstances".format(base_path, group_id)
-        payload = dumps ({ "instancesToDetach": instances_to_kill, "shouldTerminateInstances" : terminate, "shouldDecrementTargetCapacity" : decrement })
-        print_header(group_name)
-        print "\nGoing to detach (terminate) the above instances..."
-        res = query_api(req_path, token, 'PUT', payload)
-        if res.status_code != 200:
-            data = loads(res.content)
-            print_in_color('red', "Error while getting the group status!\nstatus code: {}, reason: {}\n".format(res.status_code, data['response']['errors'][0]['message']))
-        else:
-            print_in_color('green', "\nSuccessfully terminated the required batch!")
-    exit()
-
-
+# get all groups that matches the search
 groups_to_update = get_groups(options.grep, options.ungrep)
 if len(groups_to_update) == 0:
     errorAndExit("could not find any groups for the search term: {}".format(options.grep))
 print_all_groups(groups_to_update)
+
 # if the list flag was triggered, need to exit
 if options.list is not None:
     exit()
 
 # loop through each group and update
 payload = None
-change_validation = False
+user_validation = False
 for group, group_values in groups_to_update.iteritems():
     group_id = group_values[0]
 
@@ -323,23 +290,23 @@ for group, group_values in groups_to_update.iteritems():
     if options.data:
         req_type = 'GET'
         message = "retrieving data for group: {}".format(group)
-        req_path = "{}/{}".format(base_path, group_id)
+        req_path = "{}/{}".format(base_api_path, group_id)
 
     # handle status request
     elif options.status:
         req_type = 'GET'
         message = "retrieving status for group: {}".format(group)
-        req_path = "{}/{}/status".format(base_path, group_id)
+        req_path = "{}/{}/status".format(base_api_path, group_id)
 
     # handle suspension data request
     elif options.suspension:
         req_type = 'GET'
         message = "retrieving suspenstion status for group: {}".format(group)
-        req_path = "{}/{}/suspension".format(base_path, group_id)
+        req_path = "{}/{}/suspension".format(base_api_path, group_id)
 
     # handle suspension request
     elif options.suspend is not None or options.unsuspend is not None:
-        req_path = "{}/{}/suspension".format(base_path, group_id)
+        req_path = "{}/{}/suspension".format(base_api_path, group_id)
 
         if options.suspend is not None:
             req_type = 'POST'
@@ -365,7 +332,7 @@ for group, group_values in groups_to_update.iteritems():
         if ans != "y":
             print "\nSkipping update for this group..."
             continue
-        req_path = "{}/{}/scale/{}\?adjustment={}".format(base_path, group_id, command, adjustment)
+        req_path = "{}/{}/scale/{}\?adjustment={}".format(base_api_path, group_id, command, adjustment)
         message = "sending request to scale {} {} instances...".format(command, adjustment)
 
     # handle group update request
@@ -378,19 +345,19 @@ for group, group_values in groups_to_update.iteritems():
         payload = dumps({ "group": { "capacity": { "target": options.target, "minimum": options.min , "maximum": options.max }}})
         req_type = 'PUT'
         message = "sending the following payload: {}".format(payload)
-        req_path = "{}/{}".format(base_path, group_id)
+        req_path = "{}/{}".format(base_api_path, group_id)
 
     # handle roll request
     elif options.roll is not None and options.batch is not None and options.grace is not None:
         req_type = 'PUT'
-        req_path = "{}/{}/roll".format(base_path, group_id)
+        req_path = "{}/{}/roll".format(base_api_path, group_id)
         payload = dumps({ "batchSizePercentage" : options.batch, "gracePeriod" : options.grace })
         message = "rolling group: {} with batch-size: {} and a grace period: {}".format(group, options.batch, options.grace)
 
     # handle replace ami
     elif options.ami is not None or options.health is not None:
         req_type = 'PUT'
-        req_path = "{}/{}".format(base_path, group_id)
+        req_path = "{}/{}".format(base_api_path, group_id)
         if options.ami is not None:
             payload = dumps({ "group": { "compute": { "launchSpecification": { "imageId": options.ami  }}}})
             message = "replacing AMI for {}".format(group)
@@ -406,7 +373,7 @@ for group, group_values in groups_to_update.iteritems():
         user_data_script = f.read()
         f.close()
         user_data_script = b64encode(user_data_script)
-        req_path = "{}/{}".format(base_path, group_id)
+        req_path = "{}/{}".format(base_api_path, group_id)
         req_type = 'PUT'
         payload = dumps({ "group": { "compute": { "launchSpecification": { "userData": user_data_script  }}}})
         message = "sending a request to update the user data script..."
@@ -415,25 +382,39 @@ for group, group_values in groups_to_update.iteritems():
         exit()
 
     # make sure the user wants to continue with the current filter (unless the req type is GET)
-    if not change_validation and req_type != 'GET':
+    if not user_validation and req_type != 'GET':
         if not options.skip_validation:
             user_make_sure("\nAre you sure you want to updated these groups [y/n]? ")
         else:
             print "Found skip validation option, skipping user prompt..."
-        change_validation = True
+        user_validation = True
 
-    # send request
-    print_header(group)
-    print message
-    res = query_api(req_path, token, req_type, payload)
-    if res.status_code == 200:
-        if req_type == 'GET':
-            print res.content
+    # send requests as threads
+    try:
+        print message
+        open_thread(query_thread, (requests_queue, group, req_path, token, req_type, payload))
+    except Exception as e:
+        errorAndExit(e)
+
+# wait for all threads to finish
+for p in processes:
+    p.join()
+
+# print the results
+for result in requests_queue:
+    request_type = result[0]
+    request_result = result[1]
+    request_group = result[2]
+    print_header(request_group)
+    if request_result.status_code == 200:
+        if request_type == 'GET':
+            print request_result.content
         else:
             print_in_color('green', "Update was successful!")
     else:
-        data = loads(res.content)
-        print_in_color('red', "Error while updating group!\nstatus code: {}, reason: {}\n".format(res.status_code, data['response']['errors'][0]['message']))
+        data = loads(request_result.content)
+        print_in_color('red', "Error while updating group!\nstatus code: {}, reason: {}\n".format(request_result.status_code, data['response']['errors'][0]['message']))
+
 
 print_message("Done running on all groups!")
 
