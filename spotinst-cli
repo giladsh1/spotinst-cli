@@ -3,7 +3,7 @@
 # This tool allows the user to interact with spotinst API
 # run the script with the -h flag for help
 
-from json import loads, dumps
+from json import loads as json_loads, dumps as json_dumps
 from collections import OrderedDict
 from optparse import OptionParser
 from os import system, environ
@@ -49,9 +49,9 @@ def print_in_color(color, msg):
 # This function prints a group name surrounded with =
 def print_header(text):
     text_len = len(text)
-    print "\n" + ("=" * text_len)
+    print "\n" + ("-" * text_len)
     print text
-    print ("=" * text_len)
+    print ("-" * text_len)
 
 
 # This function queries spotinst API endpoint and returns the result to a queue
@@ -61,6 +61,7 @@ def query_thread(queue, group, api_url, spotinst_token, req_method='GET', req_pa
             'Content-Type': 'application/json',
             'Authorization': 'Bearer %s' % spotinst_token,
         }
+        result = ""
         if req_method == 'GET':
             result = get(api_url, headers=headers)
         elif req_method == 'PUT':
@@ -69,6 +70,8 @@ def query_thread(queue, group, api_url, spotinst_token, req_method='GET', req_pa
             result = post(api_url, headers=headers, data=req_payload)
         elif req_method == 'DELETE':
             result = delete(api_url, headers=headers, data=req_payload)
+        else:
+            errorAndExit("wrong http method: {req_method}".format(**locals()))
         queue.append([req_method, result, group])
     except Exception as e:
         errorAndExit(e.message)
@@ -89,28 +92,30 @@ def query_api(api_url, spotinst_token, req_method='GET', req_payload=None):
             return post(api_url, headers=headers, data=req_payload)
         elif req_method == 'DELETE':
             return delete(api_url, headers=headers, data=req_payload)
+        else:
+            errorAndExit("wrong http method: {req_method}".format(**locals()))
     except Exception as e:
         errorAndExit(e.message)
 
 
 # This function returns a groups dict, filtered by name (contains) or all if parameter is empty
 def get_groups(grep_list, ungrep_list):
-    print "\nQuerying spotinst API, hold on..."
+    print_message("Getting all groups from Spotisnt, please wait...")
     result  = query_api(base_api_path, token)
     if result.status_code > 299:
-        errorAndExit("bad response from Spotinst!\n%s" % result.content)
-    data = loads(result.content)
-    groups_dict = {}
-    all_groups = data['response']['items']
-    for group in all_groups:
-        # check if the spot_group_name parameter is not empty
-        # is so, need to return only the groups that matches the search
+        errorAndExit("bad response from Spotinst!\n{}".format(result.content))
+    try:
+        data = json_loads(result.content)
+    except Exception as e:
+        errorAndExit("while loading json response: {}".format(e.message))
+    # apply grep and ungrep filters
+    groups = {}
+    for group in data['response']['items']:
         group_name = group['name'].lower()
-        if [n for n in grep_list if n in group_name] and not [n for n in ungrep_list if n in group_name]:
-            groups_dict[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
-    # sort the list by name
-    sorted_inst = OrderedDict(sorted(groups_dict.items()))
-    return sorted_inst
+        if [grep_term for grep_term in grep_list if grep_term in group_name] and not [ungrep_term for ungrep_term in ungrep_list if ungrep_term in group_name]:
+            groups[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
+    # return a sorted list of groups
+    return OrderedDict(sorted(groups.items()))
 
 
 # This function prints groups as a table
@@ -123,32 +128,10 @@ def print_all_groups(groups_to_print):
         table.add_row([counter, key, value[0], value[1], value[2], value[3]])
         counter += 1
     print_message("Found the following groups: ")
-
-    print table
-
-
-# This function calculates the percentage change between two given numbers
-def calc_percentage_change(old_val, new_val):
-    percentage_change = 0
-    try:
-        if old_val != 0:
-            percentage_change = ((int(new_val) - int(old_val)) / float(old_val)) * 100
-        return abs(percentage_change)
-    except Exception as e:
-        return percent_alert_threshold
+    print "{table}".format(**locals())
 
 
-# This function checks for changes in the group target and alerts the user
-def check_change_in_target(group_name, current_group_target, desired_group_target, alert_threshold):
-    target_change = calc_percentage_change(current_group_target, desired_group_target)
-    ans_change = "y"
-    if int(target_change) >= alert_threshold and not options.skip_validation:
-        print "{} target value is: {}, requested target is: {}.".format(group_name, current_group_target, desired_group_target)
-        ans_change = raw_input("This represent a change of over 30%, are you sure you want to proceed? [y/n] ")
-    return ans_change
-
-
-# This function prints a message surrounded by #
+# This function prints a message surrounded lines
 def print_message(msg):
     all_lines = msg.splitlines()
     longest_line = 0
@@ -166,7 +149,7 @@ def print_message(msg):
 def user_make_sure(question):
     ans_from_user = raw_input(question)
     if ans_from_user !="y":
-        print "\nExiting.."
+        print "\nExiting...\n"
         exit()
 
 
@@ -210,10 +193,33 @@ def validate_pip_packages():
                      "Please install all packages using the following command in the project's root folder:\n"
                      "pip install -r requirements.txt --user --upgrade")
 
+
+# function validate suspension input
+def validate_suspension(option, opt, value, parser):
+    if value not in valid_suspension_types:
+        errorAndExit("invalid suspension value: '{value}'!\nValid values are: {list}\n".format(value=value, list=", ".join(valid_suspension_types)))
+    # if value is set to ALL pass all process and remove ALL
+    if value == 'ALL':
+        processes_list = list(valid_suspension_types)
+        processes_list.remove("ALL")
+        setattr(parser.values, option.dest, processes_list)
+    else:
+        setattr(parser.values, option.dest, [value])
+
 ##### MAIN ####
 validate_pip_packages()
 from prettytable import PrettyTable
 from requests import put, get, post, delete
+
+# global variables
+base_api_path = "https://api.spotinst.io/aws/ec2/group"
+percent_alert_threshold = 30
+processes = []
+requests_queue = []
+group_placeholder = "__group_id__"
+valid_suspension_types = ["AUTO_SCALE", "AUTO_HEALING", "OUT_OF_STRATEGY","PREVENTIVE_REPLACEMENT","REVERT_PREFERRED", "ALL"]
+payload = None
+user_validation = False
 
 # define help and options
 usage = "Usage: %prog [options]"
@@ -229,8 +235,8 @@ parser.add_option("--target", action="store", dest="target", type=int, help="upd
 parser.add_option("--max", action="store", dest="max", type=int, help="update group maximum capacity, must supply with min and target")
 parser.add_option("--scale-up", action="store", dest="scale_up", type=int, help="scale up group by X number of instances")
 parser.add_option("--scale-down", action="store", dest="scale_down", type=int, help="scale down group by X number of instances")
-parser.add_option("--suspend", action="store", choices=['AUTO_SCALE', 'AUTO_HEALING'], dest="suspend", help="suspend scaling or healing for a group")
-parser.add_option("--unsuspend", action="store", dest="unsuspend", choices=['AUTO_SCALE', 'AUTO_HEALING'], help="unsuspend scaling or healing for a group")
+parser.add_option("--suspend", type="string", default=None, action="callback", callback=validate_suspension, dest="suspend", help="suspend scaling or healing for a group")
+parser.add_option("--unsuspend", type="string", default=None, action="callback", callback=validate_suspension, dest="unsuspend", help="unsuspend scaling or healing for a group")
 parser.add_option("--roll", action="store_true", dest="roll", help="roll a group, must supply batch-size, and grace-period")
 parser.add_option("--batch-size", action="store", dest="batch", type=int, help="roll batch size - must supply with the roll flag")
 parser.add_option("--grace-period", action="store", dest="grace", type=int, help="roll grace period - must supply with the roll flag")
@@ -246,26 +252,12 @@ if len(argv) == 1:
     system("python " + argv[0] + " -h")
     exit()
 
-# global variables
-percent_alert_threshold = 30
-processes = []
-requests_queue = []
-
 # validate input
-if options.max is not None and (options.min is None or options.target is None):
-    errorAndExit("you must supply max with min and target!")
-if options.min is not None and (options.max is None or options.target is None):
-    errorAndExit("you must supply min with max and target!")
-if options.target is not None and (options.max is None or options.min is None):
-    errorAndExit("you must supply target with max and min!")
-if options.roll is not None and (options.batch is None or options.grace is None):
+if any([options.min, options.max, options.target]) and not all([options.min, options.max, options.target]):
+    errorAndExit("you must supply max, min and target together!")
+if options.roll and not all([options.batch, options.grace]):
     errorAndExit("you must supply batch size and grace period with the roll flag!")
-if options.max is not None and options.min is not None and options.target is not None:
-    if options.target < options.min or options.max < options.min or options.target > options.max:
-        errorAndExit("check input - the number makes no sense!")
 
-# set spotinst main path and check spotinst token
-base_api_path = "https://api.spotinst.io/aws/ec2/group"
 token = environ.get('spotinst_token')
 if not token:
     errorAndExit("you must define an environment variable called 'spotinst_token' with a valid token (use export or .bashrc file)!")
@@ -277,122 +269,97 @@ if len(groups_to_update) == 0:
 print_all_groups(groups_to_update)
 
 # if the list flag was triggered, need to exit
-if options.list is not None:
+if options.list:
     exit()
 
+# handle data request
+if options.data:
+    req_type = 'GET'
+    req_uri = "{}/{}".format(base_api_path, group_placeholder)
+
+# handle status request
+elif options.status:
+    req_type = 'GET'
+    req_uri = "{}/{}/status".format(base_api_path, group_placeholder)
+
+# handle suspension data request
+elif options.suspension:
+    req_type = 'GET'
+    req_uri = "{}/{}/suspension".format(base_api_path, group_placeholder)
+
+# handle suspension request
+elif any([options.suspend, options.unsuspend]):
+    req_uri = "{}/{}/suspension".format(base_api_path, group_placeholder)
+    if options.suspend:
+        req_type = 'POST'
+        payload = json_dumps({"processes": options.suspend})
+    elif options.unsuspend:
+        req_type = 'DELETE'
+        payload = json_dumps({"processes": options.unsuspend})
+
+# handle scale request
+elif any([options.scale_down, options.scale_up]):
+    req_type = 'PUT'
+    if options.scale_up:
+        command = "up"
+        adjustment = options.scale_up
+    else:
+        command = "down"
+        adjustment = options.scale_down
+    req_uri = "{}/{}/scale/{}\?adjustment={}".format(base_api_path, group_placeholder, command, adjustment)
+
+# handle group update request
+elif all([options.min, options.target, options.max]):
+    payload = json_dumps({ "group": { "capacity": { "target": options.target, "minimum": options.min , "maximum": options.max }}})
+    req_type = 'PUT'
+    req_uri = "{}/{}".format(base_api_path, group_placeholder)
+
+# handle roll request
+elif options.roll is not None and options.batch is not None and options.grace is not None:
+    req_type = 'PUT'
+    req_uri = "{}/{}/roll".format(base_api_path, group_placeholder)
+    payload = json_dumps({ "batchSizePercentage" : options.batch, "gracePeriod" : options.grace })
+
+# handle replace ami
+elif options.ami is not None or options.health is not None:
+    req_type = 'PUT'
+    req_uri = "{}/{}".format(base_api_path, group_placeholder)
+    if options.ami is not None:
+        payload = json_dumps({ "group": { "compute": { "launchSpecification": { "imageId": options.ami  }}}})
+    else:
+        payload = json_dumps({"group": {"compute": {"launchSpecification": {"healthCheckType": options.health}}}})
+
+# handle replace of user data script
+elif options.user_data is not None:
+    if not path.isfile(options.user_data):
+        errorAndExit("{} is not a valid file name!".format(options.user_data))
+    f = open(options.user_data, "r")
+    user_data_script = f.read()
+    f.close()
+    user_data_script = b64encode(user_data_script)
+    req_uri = "{}/{}".format(base_api_path, group_placeholder)
+    req_type = 'PUT'
+    payload = json_dumps({ "group": { "compute": { "launchSpecification": { "userData": user_data_script  }}}})
+
+else:
+    errorAndExit("Wrong options set - existing")
+
+# make sure the user wants to continue with the current filter (unless the req type is GET)
+if not user_validation and req_type != 'GET':
+    if not options.skip_validation:
+        user_make_sure("\nAre you sure you want to updated these groups [y/n]? ")
+    else:
+        print "Found skip validation option, skipping user prompt...\n"
+    user_validation = True
+    print_message("Updating groups - hold on...")
+
+
 # loop through each group and update
-payload = None
-user_validation = False
 for group, group_values in groups_to_update.iteritems():
     group_id = group_values[0]
-
-    # handle data request
-    if options.data:
-        req_type = 'GET'
-        message = "retrieving data for group: {}".format(group)
-        req_path = "{}/{}".format(base_api_path, group_id)
-
-    # handle status request
-    elif options.status:
-        req_type = 'GET'
-        message = "retrieving status for group: {}".format(group)
-        req_path = "{}/{}/status".format(base_api_path, group_id)
-
-    # handle suspension data request
-    elif options.suspension:
-        req_type = 'GET'
-        message = "retrieving suspenstion status for group: {}".format(group)
-        req_path = "{}/{}/suspension".format(base_api_path, group_id)
-
-    # handle suspension request
-    elif options.suspend is not None or options.unsuspend is not None:
-        req_path = "{}/{}/suspension".format(base_api_path, group_id)
-
-        if options.suspend is not None:
-            req_type = 'POST'
-            command = "suspend"
-            payload = '{"processes":["%s"]}' % options.suspend
-        elif options.unsuspend is not None:
-            req_type = 'DELETE'
-            command = "unsuspend"
-            payload = '{"processes":["%s"]}' % options.unsuspend
-
-        message = "sending request to {} the group".format(command)
-    # handle scale request
-    elif options.scale_down is not None or options.scale_up is not None:
-        req_type = 'PUT'
-        if options.scale_up is not None:
-            command = "up"
-            adjustment = options.scale_up
-        elif options.scale_down is not None:
-            command = "down"
-            adjustment = options.scale_down
-        # check that this change does not pass the percent_alert_threshold
-        ans = check_change_in_target(group, group_values[2], int(adjustment) + int(group_values[2]), percent_alert_threshold)
-        if ans != "y":
-            print "\nSkipping update for this group..."
-            continue
-        req_path = "{}/{}/scale/{}\?adjustment={}".format(base_api_path, group_id, command, adjustment)
-        message = "sending request to scale {} {} instances...".format(command, adjustment)
-
-    # handle group update request
-    elif options.min is not None and options.target is not None and options.max is not None:
-        # check that this change does not pass the percent_alert_threshold
-        change_ans = check_change_in_target(group, group_values[2], options.target, percent_alert_threshold)
-        if change_ans != "y":
-            print "\nSkipping update for this group..."
-            continue
-        payload = dumps({ "group": { "capacity": { "target": options.target, "minimum": options.min , "maximum": options.max }}})
-        req_type = 'PUT'
-        message = "sending the following payload: {}".format(payload)
-        req_path = "{}/{}".format(base_api_path, group_id)
-
-    # handle roll request
-    elif options.roll is not None and options.batch is not None and options.grace is not None:
-        req_type = 'PUT'
-        req_path = "{}/{}/roll".format(base_api_path, group_id)
-        payload = dumps({ "batchSizePercentage" : options.batch, "gracePeriod" : options.grace })
-        message = "rolling group: {} with batch-size: {} and a grace period: {}".format(group, options.batch, options.grace)
-
-    # handle replace ami
-    elif options.ami is not None or options.health is not None:
-        req_type = 'PUT'
-        req_path = "{}/{}".format(base_api_path, group_id)
-        if options.ami is not None:
-            payload = dumps({ "group": { "compute": { "launchSpecification": { "imageId": options.ami  }}}})
-            message = "replacing AMI for {}".format(group)
-        else:
-            payload = dumps({"group": {"compute": {"launchSpecification": {"healthCheckType": options.health}}}})
-            message = "replacing health check type for {}".format(group)
-
-    # handle replace of user data script
-    elif options.user_data is not None:
-        if not path.isfile(options.user_data):
-            errorAndExit("{} is not a valid file name!".format(options.user_data))
-        f = open(options.user_data, "r")
-        user_data_script = f.read()
-        f.close()
-        user_data_script = b64encode(user_data_script)
-        req_path = "{}/{}".format(base_api_path, group_id)
-        req_type = 'PUT'
-        payload = dumps({ "group": { "compute": { "launchSpecification": { "userData": user_data_script  }}}})
-        message = "sending a request to update the user data script..."
-
-    else:
-        exit()
-
-    # make sure the user wants to continue with the current filter (unless the req type is GET)
-    if not user_validation and req_type != 'GET':
-        if not options.skip_validation:
-            user_make_sure("\nAre you sure you want to updated these groups [y/n]? ")
-        else:
-            print "Found skip validation option, skipping user prompt..."
-        user_validation = True
-
-    # send requests as threads
+    group_req_uri = req_uri.replace(group_placeholder, group_id)
     try:
-        print message
-        open_thread(query_thread, (requests_queue, group, req_path, token, req_type, payload))
+        open_thread(query_thread, (requests_queue, group, group_req_uri, token, req_type, payload))
     except Exception as e:
         errorAndExit(e)
 
@@ -412,9 +379,14 @@ for result in requests_queue:
         else:
             print_in_color('green', "Update was successful!")
     else:
-        data = loads(request_result.content)
-        print_in_color('red', "Error while updating group!\nstatus code: {}, reason: {}\n".format(request_result.status_code, data['response']['errors'][0]['message']))
+        try:
+            data = json_loads(request_result.content)
+        except:
+            data = None
+        print_in_color('red', "Error while updating group!\nstatus code: {}".format(request_result.status_code))
+        if data is not None:
+            print "request content: {}".format(data['response']['errors'][0]['message'])
 
 
-print_message("Done running on all groups!")
+print_message("Done executing on all groups!")
 
