@@ -14,7 +14,6 @@ from commands import getoutput, getstatusoutput
 from threading import Thread
 from pkg_resources import DistributionNotFound
 
-
 # This function opens a thread with args
 def open_thread(thread_target,thread_args):
     t = Thread(target=thread_target, args = (thread_args))
@@ -100,7 +99,8 @@ def query_api(api_url, spotinst_token, req_method='GET', req_payload=None):
 
 # This function returns a groups dict, filtered by name (contains) or all if parameter is empty
 def get_groups(grep_list, ungrep_list):
-    print_message("Getting groups from Spotisnt, please wait...")
+    if not options.json:
+        print_message("Getting groups from Spotisnt, please wait...")
     result  = query_api(base_api_path, token)
     if result.status_code > 299:
         errorAndExit("bad response from Spotinst!\n{}".format(result.content))
@@ -125,15 +125,20 @@ def get_groups(grep_list, ungrep_list):
 
 # This function prints groups as a table
 def print_all_groups(groups_to_print):
-    table = PrettyTable(['#' ,'Group name', 'ID', 'Min', 'Target', 'Max'])
-    table.align = "l"
-    table.border = True
-    counter = 1
-    for key, value in groups_to_print.iteritems():
-        table.add_row([counter, key, value[0], value[1], value[2], value[3]])
-        counter += 1
-    print_message("Found the following groups: ")
-    print "{table}".format(**locals())
+    if not options.json:
+        table = PrettyTable(['#' ,'Group name', 'ID', 'Min', 'Target', 'Max'])
+        table.align = "l"
+        table.border = True
+        counter = 1
+        for key, value in groups_to_print.iteritems():
+            table.add_row([counter, key, value[0], value[1], value[2], value[3]])
+            counter += 1
+        print_message("Found the following groups: ")
+        print "{table}".format(**locals())
+    else:
+        if options.list:
+            groups_to_print = { "groups" : groups_to_print.keys()}
+            print json_dumps(groups_to_print, indent=2)
 
 
 # This function prints a message surrounded lines
@@ -248,6 +253,7 @@ parser.add_option("--grace-period", action="store", dest="grace", type=int, help
 parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI for group")
 parser.add_option("--replace-health", action="store", dest="health", choices=['EC2', 'ELB', 'HCS'], help="replace health check type - valid options: EC2, ELB, HCS")
 parser.add_option("--user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
+parser.add_option("-j", "--json", action="store_true", dest="json", help="output pure json -- useful for piping into json parsers like jq")
 parser.add_option("-y", "--skip-validation", action="store_true", dest="skip_validation", help="skip prompt validation for non-interactive mode")
 (options, args) = parser.parse_args()
 
@@ -353,9 +359,11 @@ if not user_validation and req_type != 'GET':
     if not options.skip_validation:
         user_make_sure("\nAre you sure you want to updated these groups [y/n]? ")
     else:
-        print "Found skip validation option, skipping user prompt...\n"
+        if not options.json:
+            print "\nFound skip validation option, skipping user prompt...\n"
     user_validation = True
-    print_message("Updating groups - hold on...")
+    if not options.json:
+        print_message("Updating groups - hold on...")
 
 
 # loop through each group and update
@@ -376,21 +384,25 @@ for result in requests_queue:
     request_type = result[0]
     request_result = result[1]
     request_group = result[2]
-    print_header(request_group)
-    if request_result.status_code == 200:
-        if request_type == 'GET':
-            print request_result.content
-        else:
-            print_in_color('green', "Update was successful!")
+    group_result = {"group": request_group, "content": json_loads(request_result.content), "request_status_code": request_result.status_code}
+    if options.json:
+        print json_dumps(group_result, indent=2, sort_keys=True)
     else:
-        try:
-            data = json_loads(request_result.content)
-        except:
-            data = None
-        print_in_color('red', "Error while updating group!\nstatus code: {}".format(request_result.status_code))
-        if data is not None:
-            print "request content: {}".format(data['response']['errors'][0]['message'])
+        print_header(request_group)
+        if request_result.status_code == 200:
+            if request_type == 'GET':
+                print request_result.content
+            else:
+                print_in_color('green', "Update was successful!")
+        else:
+            try:
+                data = json_loads(request_result.content)
+            except:
+                data = None
+            print_in_color('red', "Error while updating group!\nstatus code: {}".format(request_result.status_code))
+            if data is not None:
+                print "request content: {}".format(data['response']['errors'][0]['message'])
 
-
-print_message("Done executing on all groups!")
-
+if not options.json:
+    print_message("Done executing on all groups!")
+    
