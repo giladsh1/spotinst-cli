@@ -63,25 +63,8 @@ Set variables like:
 SpotInst account ids can be found in the web console under settings/account for each of your accounts.  
 There is currently no way to pull account ids from the SpotInst API.  
 
-### Example usage
-#### list groups with name filter:
-![](docs/list_groups.png)
-
-#### get data:
-![](docs/get_data.png)
-
-#### get status:
-![](docs/get_status.png)
-
-#### get suspension status:
-![](docs/suspension_status.png)
-
-#### update capacity:
-![](docs/update_capacity.png)
-
-#### scale up:
-![](docs/scale_up.png)
-
-#### replace AMI:
-![](docs/replace-ami.png)
-
+### Installation 
+```
+git clone git@github.com:giladsh1/spotinst-cli.git
+ln -s /usr/local/bin/spotinst-cli $(pwd)spotinst-cli/spotinst-cli
+```
