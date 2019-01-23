@@ -100,7 +100,7 @@ def query_api(api_url, spotinst_token, req_method='GET', req_payload=None):
 
 # This function returns a groups dict, filtered by name (contains) or all if parameter is empty
 def get_groups(grep_list, ungrep_list):
-    print_message("Getting all groups from Spotisnt, please wait...")
+    print_message("Getting groups from Spotisnt, please wait...")
     result  = query_api(base_api_path, token)
     if result.status_code > 299:
         errorAndExit("bad response from Spotinst!\n{}".format(result.content))
@@ -139,10 +139,10 @@ def print_message(msg):
         if len(line.strip()) > longest_line:
             longest_line = len(line.strip())
     padding = 8
-    print "\n" + ("-" * (longest_line + padding))
+    print "\n" + ("=" * (longest_line + padding))
     for line in msg.splitlines():
         print (" " * (padding / 2)) + line
-    print ("-" * (longest_line + padding)) + "\n"
+    print ("=" * (longest_line + padding)) + "\n"
 
 
 # This function makes sure the user wants to process with his choice
@@ -241,9 +241,8 @@ parser.add_option("--roll", action="store_true", dest="roll", help="roll a group
 parser.add_option("--batch-size", action="store", dest="batch", type=int, help="roll batch size - must supply with the roll flag")
 parser.add_option("--grace-period", action="store", dest="grace", type=int, help="roll grace period - must supply with the roll flag")
 parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI for group")
-parser.add_option("--replace-health", action="store", dest="health", choices=['EC2', 'ELB', "HCS"], help="replace health check type for a group")
+parser.add_option("--replace-health", action="store", dest="health", choices=['EC2', 'ELB', 'HCS'], help="replace health check type - valid options: EC2, ELB, HCS")
 parser.add_option("--user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
-parser.add_option("--detach-batch", action="store_true", dest="detach_batch", help="detach all instances for specific batch - choose from a list of batches")
 parser.add_option("-y", "--skip-validation", action="store_true", dest="skip_validation", help="skip prompt validation for non-interactive mode")
 (options, args) = parser.parse_args()
 
