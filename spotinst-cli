@@ -54,12 +54,15 @@ def print_header(text):
 
 
 # This function queries spotinst API endpoint and returns the result to a queue
-def query_thread(queue, group, api_url, spotinst_token, req_method='GET', req_payload=None):
+def query_thread(queue, group, api_url, spotinst_token, req_method='GET', req_payload=None, account=None):
     try:
         headers = {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer %s' % spotinst_token,
         }
+        if account is not None:
+            api_url = api_url + "?accountId={account}".format(**locals())
+
         result = ""
         if req_method == 'GET':
             result = get(api_url, headers=headers)
@@ -77,12 +80,15 @@ def query_thread(queue, group, api_url, spotinst_token, req_method='GET', req_pa
 
 
 # This function queries spotinst API endpoint
-def query_api(api_url, spotinst_token, req_method='GET', req_payload=None):
+def query_api(api_url, spotinst_token, req_method='GET', req_payload=None, account=None):
     try:
         headers = {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer %s' % spotinst_token,
         }
+        if account is not None:
+            api_url = api_url + "?accountId={account}".format(**locals())
+
         if req_method == 'GET':
             return get(api_url, headers=headers)
         elif req_method == 'PUT':
@@ -98,10 +104,10 @@ def query_api(api_url, spotinst_token, req_method='GET', req_payload=None):
 
 
 # This function returns a groups dict, filtered by name (contains) or all if parameter is empty
-def get_groups(grep_list, ungrep_list):
+def get_groups(base_api_path, token, account, grep_list, ungrep_list):
     if not options.json:
         print_message("Getting groups from Spotisnt, please wait...")
-    result  = query_api(base_api_path, token)
+    result  = query_api(base_api_path, token, account=account)
     if result.status_code > 299:
         errorAndExit("bad response from Spotinst!\n{}".format(result.content))
     try:
@@ -234,12 +240,14 @@ user_validation = False
 # define help and options
 usage = "Usage: %prog [options]"
 parser = OptionParser(usage)
+parser.add_option("-a", "--account", action="store", dest="account",
+    help="spotinst account id environment variable label - define an environment variable like spotinst_account_prod=\"act-asdfasdf\" and call with \"-a prod\"; SpotInst account ids can be found in the web interface under Settings > Account")
 parser.add_option("-g", "--grep", type="string", action="callback", dest="grep", callback=parser_split, default="", help="text to filter groups by")
-parser.add_option("-d", "--get-data", action="store_true", dest="data", default="", help="get groups data")
-parser.add_option("-s", "--get-status", action="store_true", dest="status", default="", help="get groups status")
-parser.add_option("--suspension-status", action="store_true", dest="suspension", default="", help="get groups suspension status")
 parser.add_option("-u", "--ungrep", type="string", action="callback", default="", callback=parser_split, dest="ungrep", help="text to exclude groups")
 parser.add_option("-l", "--list", action="store_true", dest="list", help="show group list and exit")
+parser.add_option("-j", "--json", action="store_true", dest="json", help="output pure json -- useful for piping into json parsers like jq")
+parser.add_option("-d", "--get-data", action="store_true", dest="data", default="", help="get groups data")
+parser.add_option("-s", "--get-status", action="store_true", dest="status", default="", help="get groups status")
 parser.add_option("--min", action="store", dest="min", type=int, help="update group minimum capacity, must suuply with max and target")
 parser.add_option("--target", action="store", dest="target", type=int, help="update group target capacity, must supply with min and max")
 parser.add_option("--max", action="store", dest="max", type=int, help="update group maximum capacity, must supply with min and target")
@@ -247,6 +255,7 @@ parser.add_option("--scale-up", action="store", dest="scale_up", type=int, help=
 parser.add_option("--scale-down", action="store", dest="scale_down", type=int, help="scale down group by X number of instances")
 parser.add_option("--suspend", type="string", default=None, action="callback", callback=validate_suspension, dest="suspend", help="suspend scaling or healing for a group")
 parser.add_option("--unsuspend", type="string", default=None, action="callback", callback=validate_suspension, dest="unsuspend", help="unsuspend scaling or healing for a group")
+parser.add_option("--suspension-status", action="store_true", dest="suspension", default="", help="get groups suspension status")
 parser.add_option("--roll", action="store_true", dest="roll", help="roll a group, must supply batch-size, and grace-period")
 parser.add_option("--batch-size", action="store", dest="batch", type=int, help="roll batch size - must supply with the roll flag")
 parser.add_option("--grace-period", action="store", dest="grace", type=int, help="roll grace period - must supply with the roll flag")
@@ -255,7 +264,6 @@ parser.add_option("--replace-health", action="store", dest="health", choices=['E
 parser.add_option("--set-user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
 parser.add_option("--get-user-data", action="store_true", dest="get_user_data", help="fetch the user data script (cloud init)")
 parser.add_option("--roll-status", action="store_true", dest="roll_status", help="check the status of deployments")
-parser.add_option("-j", "--json", action="store_true", dest="json", help="output pure json -- useful for piping into json parsers like jq")
 parser.add_option("-y", "--skip-validation", action="store_true", dest="skip_validation", help="skip prompt validation for non-interactive mode")
 (options, args) = parser.parse_args()
 
@@ -272,15 +280,23 @@ if options.roll and not all([options.batch, options.grace]):
 if options.json:
     if options.get_user_data:
         errorAndExit("user data cannot be printed as a json output!")
-    if not options.skip_validation:
-        errorAndExit("you must supply the -y option for json format")
 
+# check token
 token = environ.get('spotinst_token')
 if not token:
     errorAndExit("you must define an environment variable called 'spotinst_token' with a valid token (use export or .bashrc file)!")
 
+# check for Spotinst account
+if options.account:
+    environment_var = "spotinst_account_{options.account}".format(**locals())
+    account = environ.get(environment_var)
+    if account is None:
+        errorAndExit("could not find the environment variable: {environment_var}".format(**locals()))
+else:
+    account = None
+
 # get all groups that matches the search
-groups_to_update = get_groups(options.grep, options.ungrep)
+groups_to_update = get_groups(base_api_path, token, account, options.grep, options.ungrep)
 if len(groups_to_update) == 0:
     errorAndExit("could not find any groups for the search term: {}".format(options.grep))
 print_all_groups(groups_to_update)
@@ -371,6 +387,8 @@ else:
 
 # make sure the user wants to continue with the current filter (unless the req type is GET)
 if not user_validation and req_type != 'GET':
+    if not options.json:
+        errorAndExit("you must supply the -y option for json format")
     if not options.skip_validation:
         user_make_sure("\nAre you sure you want to updated these groups [y/n]? ")
     else:
@@ -386,7 +404,7 @@ for group, group_values in groups_to_update.iteritems():
     group_id = group_values[0]
     group_req_uri = req_uri.replace(group_placeholder, group_id)
     try:
-        open_thread(query_thread, (requests_queue, group, group_req_uri, token, req_type, payload))
+        open_thread(query_thread, (requests_queue, group, group_req_uri, token, req_type, payload, account))
     except Exception as e:
         errorAndExit(e)
 
