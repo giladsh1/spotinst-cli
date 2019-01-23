@@ -107,13 +107,18 @@ def get_groups(grep_list, ungrep_list):
     try:
         data = json_loads(result.content)
     except Exception as e:
-        errorAndExit("while loading json response: {}".format(e.message))
+        errorAndExit("while loading json response: {e.message}".format(**locals()))
     # apply grep and ungrep filters
     groups = {}
-    for group in data['response']['items']:
-        group_name = group['name'].lower()
-        if [grep_term for grep_term in grep_list if grep_term in group_name] and not [ungrep_term for ungrep_term in ungrep_list if ungrep_term in group_name]:
+    all_groups = data['response']['items']
+    if len(grep_list) == 0:
+        for group in all_groups:
             groups[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
+    else:
+        for group in all_groups:
+            group_name = group['name'].lower()
+            if [grep_term for grep_term in grep_list if grep_term in group_name] and not [ungrep_term for ungrep_term in ungrep_list if ungrep_term in group_name]:
+                groups[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
     # return a sorted list of groups
     return OrderedDict(sorted(groups.items()))
 
@@ -314,22 +319,22 @@ elif all([options.min, options.target, options.max]):
     req_uri = "{}/{}".format(base_api_path, group_placeholder)
 
 # handle roll request
-elif options.roll is not None and options.batch is not None and options.grace is not None:
+elif all([options.roll, options.batch, options.grace]):
     req_type = 'PUT'
     req_uri = "{}/{}/roll".format(base_api_path, group_placeholder)
     payload = json_dumps({ "batchSizePercentage" : options.batch, "gracePeriod" : options.grace })
 
 # handle replace ami
-elif options.ami is not None or options.health is not None:
+elif any([options.ami, options.health]):
     req_type = 'PUT'
     req_uri = "{}/{}".format(base_api_path, group_placeholder)
-    if options.ami is not None:
+    if options.ami:
         payload = json_dumps({ "group": { "compute": { "launchSpecification": { "imageId": options.ami  }}}})
     else:
         payload = json_dumps({"group": {"compute": {"launchSpecification": {"healthCheckType": options.health}}}})
 
 # handle replace of user data script
-elif options.user_data is not None:
+elif options.user_data:
     if not path.isfile(options.user_data):
         errorAndExit("{} is not a valid file name!".format(options.user_data))
     f = open(options.user_data, "r")
