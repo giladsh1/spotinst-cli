@@ -17,15 +17,14 @@ spotinst-cli has the following flags -
   --max=MAX                    update group maximum capacity, must supply with min and target
   --scale-up=SCALE_UP          scale up group by X number of instances
   --scale-down=SCALE_DOWN      scale down group by X number of instances
-  --suspend                    suspend group activities, must supply AUTO_SCALE or AUTO_HEALING
-  --unsuspend                  unsuspend group activities, must supply AUTO_SCALE or AUTO_HEALING
+  --suspend                    suspend group activities
+  --unsuspend                  unsuspend group activities
   --roll                       roll a group, must supply batch-size, and grace-period
   --batch-size=BATCH           roll batch size - must supply with the roll flag
   --grace-period=GRACE         roll grace period - must supply with the roll flag
   --replace-ami=AMI            replace AMI for group
   --replace-health=HEALTH      replace the health check type - can be HCS, EC2, ELB
   --user-data=USER_DATA        updated user data - supply a file path which contains the user data script (cloud init)
-  --detach-batch               detach all instances for specific batch - choose from a list of batches
   -y, --skip-validation        skip prompt validation for non-interactive mode
 ```
 
@@ -51,5 +50,3 @@ spotinst-cli has the following flags -
 #### replace AMI:
 ![](docs/replace-ami.png)
 
-#### detach specific batch:
-![](docs/detach_batch.png)
