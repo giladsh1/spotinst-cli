@@ -61,7 +61,7 @@ def query_thread(queue, group, api_url, spotinst_token, req_method='GET', req_pa
             'Authorization': 'Bearer %s' % spotinst_token,
         }
         if account is not None:
-            api_url = api_url + "?accountId={account}".format(**locals())
+            api_url = "{api_url}?accountId={account}".format(**locals())
 
         result = ""
         if req_method == 'GET':
@@ -87,7 +87,7 @@ def query_api(api_url, spotinst_token, req_method='GET', req_payload=None, accou
             'Authorization': 'Bearer %s' % spotinst_token,
         }
         if account is not None:
-            api_url = api_url + "?accountId={account}".format(**locals())
+            api_url = "{api_url}?accountId={account}".format(**locals())
 
         if req_method == 'GET':
             return get(api_url, headers=headers)
