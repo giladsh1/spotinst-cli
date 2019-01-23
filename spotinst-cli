@@ -24,7 +24,7 @@ def open_thread(thread_target,thread_args):
 
 # This function prints error and exits
 def errorAndExit(exception_message):
-    print "\nERROR - %s" %(exception_message)
+    print "\nERROR - %s\n" %(exception_message)
     exit()
 
 
@@ -134,7 +134,7 @@ def print_all_groups(groups_to_print):
             table.add_row([counter, key, value[0], value[1], value[2], value[3]])
             counter += 1
         print_message("Found the following groups: ")
-        print "{table}".format(**locals())
+        print "{table}\n".format(**locals())
     else:
         if options.list:
             groups_to_print = { "groups" : groups_to_print.keys()}
@@ -252,7 +252,9 @@ parser.add_option("--batch-size", action="store", dest="batch", type=int, help="
 parser.add_option("--grace-period", action="store", dest="grace", type=int, help="roll grace period - must supply with the roll flag")
 parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI for group")
 parser.add_option("--replace-health", action="store", dest="health", choices=['EC2', 'ELB', 'HCS'], help="replace health check type - valid options: EC2, ELB, HCS")
-parser.add_option("--user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
+parser.add_option("--set-user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
+parser.add_option("--get-user-data", action="store_true", dest="get_user_data", help="fetch the user data script (cloud init)")
+parser.add_option("--roll-status", action="store_true", dest="roll_status", help="check the status of deployments")
 parser.add_option("-j", "--json", action="store_true", dest="json", help="output pure json -- useful for piping into json parsers like jq")
 parser.add_option("-y", "--skip-validation", action="store_true", dest="skip_validation", help="skip prompt validation for non-interactive mode")
 (options, args) = parser.parse_args()
@@ -267,6 +269,11 @@ if any([options.min, options.max, options.target]) and not all([options.min, opt
     errorAndExit("you must supply max, min and target together!")
 if options.roll and not all([options.batch, options.grace]):
     errorAndExit("you must supply batch size and grace period with the roll flag!")
+if options.json:
+    if options.get_user_data:
+        errorAndExit("user data cannot be printed as a json output!")
+    if not options.skip_validation:
+        errorAndExit("you must supply the -y option for json format")
 
 token = environ.get('spotinst_token')
 if not token:
@@ -351,6 +358,14 @@ elif options.user_data:
     req_type = 'PUT'
     payload = json_dumps({ "group": { "compute": { "launchSpecification": { "userData": user_data_script  }}}})
 
+elif options.get_user_data:
+    req_type = 'GET'
+    req_uri = "{}/{}".format(base_api_path, group_placeholder)
+
+elif options.roll_status:
+    req_type = 'GET'
+    req_uri = "{}/{}/roll".format(base_api_path, group_placeholder)
+
 else:
     errorAndExit("Wrong options set - existing")
 
@@ -360,7 +375,7 @@ if not user_validation and req_type != 'GET':
         user_make_sure("\nAre you sure you want to updated these groups [y/n]? ")
     else:
         if not options.json:
-            print "\nFound skip validation option, skipping user prompt...\n"
+            print "Found skip validation option, skipping user prompt...\n"
     user_validation = True
     if not options.json:
         print_message("Updating groups - hold on...")
@@ -391,7 +406,10 @@ for result in requests_queue:
         print_header(request_group)
         if request_result.status_code == 200:
             if request_type == 'GET':
-                print request_result.content
+                if not options.get_user_data:
+                    print request_result.content
+                else:
+                    print b64decode(json_loads(request_result.content)['response']['items'][0]['compute']['launchSpecification']['userData'])
             else:
                 print_in_color('green', "Update was successful!")
         else:
@@ -405,4 +423,3 @@ for result in requests_queue:
 
 if not options.json:
     print_message("Done executing on all groups!")
-    
