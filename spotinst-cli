@@ -14,7 +14,6 @@ from commands import getoutput, getstatusoutput
 from threading import Thread
 from pkg_resources import DistributionNotFound
 
-
 # This function opens a thread with args
 def open_thread(thread_target,thread_args):
     t = Thread(target=thread_target, args = (thread_args))
@@ -25,7 +24,7 @@ def open_thread(thread_target,thread_args):
 
 # This function prints error and exits
 def errorAndExit(exception_message):
-    print "\nERROR - %s" %(exception_message)
+    print "\nERROR - %s\n" %(exception_message)
     exit()
 
 
@@ -55,12 +54,15 @@ def print_header(text):
 
 
 # This function queries spotinst API endpoint and returns the result to a queue
-def query_thread(queue, group, api_url, spotinst_token, req_method='GET', req_payload=None):
+def query_thread(queue, group, api_url, spotinst_token, req_method='GET', req_payload=None, account=None):
     try:
         headers = {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer %s' % spotinst_token,
         }
+        if account is not None:
+            api_url = "{api_url}?accountId={account}".format(**locals())
+
         result = ""
         if req_method == 'GET':
             result = get(api_url, headers=headers)
@@ -78,12 +80,15 @@ def query_thread(queue, group, api_url, spotinst_token, req_method='GET', req_pa
 
 
 # This function queries spotinst API endpoint
-def query_api(api_url, spotinst_token, req_method='GET', req_payload=None):
+def query_api(api_url, spotinst_token, req_method='GET', req_payload=None, account=None):
     try:
         headers = {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer %s' % spotinst_token,
         }
+        if account is not None:
+            api_url = "{api_url}?accountId={account}".format(**locals())
+
         if req_method == 'GET':
             return get(api_url, headers=headers)
         elif req_method == 'PUT':
@@ -99,36 +104,47 @@ def query_api(api_url, spotinst_token, req_method='GET', req_payload=None):
 
 
 # This function returns a groups dict, filtered by name (contains) or all if parameter is empty
-def get_groups(grep_list, ungrep_list):
-    print_message("Getting groups from Spotisnt, please wait...")
-    result  = query_api(base_api_path, token)
+def get_groups(base_api_path, token, account, grep_list, ungrep_list):
+    if not options.json:
+        print_message("Getting groups from Spotisnt, please wait...")
+    result  = query_api(base_api_path, token, account=account)
     if result.status_code > 299:
         errorAndExit("bad response from Spotinst!\n{}".format(result.content))
     try:
         data = json_loads(result.content)
     except Exception as e:
-        errorAndExit("while loading json response: {}".format(e.message))
+        errorAndExit("while loading json response: {e.message}".format(**locals()))
     # apply grep and ungrep filters
     groups = {}
-    for group in data['response']['items']:
-        group_name = group['name'].lower()
-        if [grep_term for grep_term in grep_list if grep_term in group_name] and not [ungrep_term for ungrep_term in ungrep_list if ungrep_term in group_name]:
+    all_groups = data['response']['items']
+    if len(grep_list) == 0:
+        for group in all_groups:
             groups[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
+    else:
+        for group in all_groups:
+            group_name = group['name'].lower()
+            if [grep_term for grep_term in grep_list if grep_term in group_name] and not [ungrep_term for ungrep_term in ungrep_list if ungrep_term in group_name]:
+                groups[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
     # return a sorted list of groups
     return OrderedDict(sorted(groups.items()))
 
 
 # This function prints groups as a table
 def print_all_groups(groups_to_print):
-    table = PrettyTable(['#' ,'Group name', 'ID', 'Min', 'Target', 'Max'])
-    table.align = "l"
-    table.border = True
-    counter = 1
-    for key, value in groups_to_print.iteritems():
-        table.add_row([counter, key, value[0], value[1], value[2], value[3]])
-        counter += 1
-    print_message("Found the following groups: ")
-    print "{table}".format(**locals())
+    if not options.json:
+        table = PrettyTable(['#' ,'Group name', 'ID', 'Min', 'Target', 'Max'])
+        table.align = "l"
+        table.border = True
+        counter = 1
+        for key, value in groups_to_print.iteritems():
+            table.add_row([counter, key, value[0], value[1], value[2], value[3]])
+            counter += 1
+        print_message("Found the following groups: ")
+        print "{table}\n".format(**locals())
+    else:
+        if options.list:
+            groups_to_print = { "groups" : groups_to_print.keys()}
+            print json_dumps(groups_to_print, indent=2)
 
 
 # This function prints a message surrounded lines
@@ -224,12 +240,14 @@ user_validation = False
 # define help and options
 usage = "Usage: %prog [options]"
 parser = OptionParser(usage)
+parser.add_option("-a", "--account", action="store", dest="account",
+    help="spotinst account id environment variable label - define an environment variable like spotinst_account_prod=\"act-asdfasdf\" and call with \"-a prod\"; SpotInst account ids can be found in the web interface under Settings > Account")
 parser.add_option("-g", "--grep", type="string", action="callback", dest="grep", callback=parser_split, default="", help="text to filter groups by")
-parser.add_option("-d", "--get-data", action="store_true", dest="data", default="", help="get groups data")
-parser.add_option("-s", "--get-status", action="store_true", dest="status", default="", help="get groups status")
-parser.add_option("--suspension-status", action="store_true", dest="suspension", default="", help="get groups suspension status")
 parser.add_option("-u", "--ungrep", type="string", action="callback", default="", callback=parser_split, dest="ungrep", help="text to exclude groups")
 parser.add_option("-l", "--list", action="store_true", dest="list", help="show group list and exit")
+parser.add_option("-j", "--json", action="store_true", dest="json", help="output pure json -- useful for piping into json parsers like jq")
+parser.add_option("-d", "--get-data", action="store_true", dest="data", default="", help="get groups data")
+parser.add_option("-s", "--get-status", action="store_true", dest="status", default="", help="get groups status")
 parser.add_option("--min", action="store", dest="min", type=int, help="update group minimum capacity, must suuply with max and target")
 parser.add_option("--target", action="store", dest="target", type=int, help="update group target capacity, must supply with min and max")
 parser.add_option("--max", action="store", dest="max", type=int, help="update group maximum capacity, must supply with min and target")
@@ -237,12 +255,15 @@ parser.add_option("--scale-up", action="store", dest="scale_up", type=int, help=
 parser.add_option("--scale-down", action="store", dest="scale_down", type=int, help="scale down group by X number of instances")
 parser.add_option("--suspend", type="string", default=None, action="callback", callback=validate_suspension, dest="suspend", help="suspend scaling or healing for a group")
 parser.add_option("--unsuspend", type="string", default=None, action="callback", callback=validate_suspension, dest="unsuspend", help="unsuspend scaling or healing for a group")
+parser.add_option("--suspension-status", action="store_true", dest="suspension", default="", help="get groups suspension status")
 parser.add_option("--roll", action="store_true", dest="roll", help="roll a group, must supply batch-size, and grace-period")
 parser.add_option("--batch-size", action="store", dest="batch", type=int, help="roll batch size - must supply with the roll flag")
 parser.add_option("--grace-period", action="store", dest="grace", type=int, help="roll grace period - must supply with the roll flag")
 parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI for group")
 parser.add_option("--replace-health", action="store", dest="health", choices=['EC2', 'ELB', 'HCS'], help="replace health check type - valid options: EC2, ELB, HCS")
-parser.add_option("--user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
+parser.add_option("--set-user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
+parser.add_option("--get-user-data", action="store_true", dest="get_user_data", help="fetch the user data script (cloud init)")
+parser.add_option("--roll-status", action="store_true", dest="roll_status", help="check the status of deployments")
 parser.add_option("-y", "--skip-validation", action="store_true", dest="skip_validation", help="skip prompt validation for non-interactive mode")
 (options, args) = parser.parse_args()
 
@@ -256,13 +277,26 @@ if any([options.min, options.max, options.target]) and not all([options.min, opt
     errorAndExit("you must supply max, min and target together!")
 if options.roll and not all([options.batch, options.grace]):
     errorAndExit("you must supply batch size and grace period with the roll flag!")
+if options.json:
+    if options.get_user_data:
+        errorAndExit("user data cannot be printed as a json output!")
 
+# check token
 token = environ.get('spotinst_token')
 if not token:
     errorAndExit("you must define an environment variable called 'spotinst_token' with a valid token (use export or .bashrc file)!")
 
+# check for Spotinst account
+if options.account:
+    environment_var = "spotinst_account_{options.account}".format(**locals())
+    account = environ.get(environment_var)
+    if account is None:
+        errorAndExit("could not find the environment variable: {environment_var}".format(**locals()))
+else:
+    account = None
+
 # get all groups that matches the search
-groups_to_update = get_groups(options.grep, options.ungrep)
+groups_to_update = get_groups(base_api_path, token, account, options.grep, options.ungrep)
 if len(groups_to_update) == 0:
     errorAndExit("could not find any groups for the search term: {}".format(options.grep))
 print_all_groups(groups_to_update)
@@ -314,22 +348,22 @@ elif all([options.min, options.target, options.max]):
     req_uri = "{}/{}".format(base_api_path, group_placeholder)
 
 # handle roll request
-elif options.roll is not None and options.batch is not None and options.grace is not None:
+elif all([options.roll, options.batch, options.grace]):
     req_type = 'PUT'
     req_uri = "{}/{}/roll".format(base_api_path, group_placeholder)
     payload = json_dumps({ "batchSizePercentage" : options.batch, "gracePeriod" : options.grace })
 
 # handle replace ami
-elif options.ami is not None or options.health is not None:
+elif any([options.ami, options.health]):
     req_type = 'PUT'
     req_uri = "{}/{}".format(base_api_path, group_placeholder)
-    if options.ami is not None:
+    if options.ami:
         payload = json_dumps({ "group": { "compute": { "launchSpecification": { "imageId": options.ami  }}}})
     else:
         payload = json_dumps({"group": {"compute": {"launchSpecification": {"healthCheckType": options.health}}}})
 
 # handle replace of user data script
-elif options.user_data is not None:
+elif options.user_data:
     if not path.isfile(options.user_data):
         errorAndExit("{} is not a valid file name!".format(options.user_data))
     f = open(options.user_data, "r")
@@ -340,17 +374,29 @@ elif options.user_data is not None:
     req_type = 'PUT'
     payload = json_dumps({ "group": { "compute": { "launchSpecification": { "userData": user_data_script  }}}})
 
+elif options.get_user_data:
+    req_type = 'GET'
+    req_uri = "{}/{}".format(base_api_path, group_placeholder)
+
+elif options.roll_status:
+    req_type = 'GET'
+    req_uri = "{}/{}/roll".format(base_api_path, group_placeholder)
+
 else:
     errorAndExit("Wrong options set - existing")
 
 # make sure the user wants to continue with the current filter (unless the req type is GET)
 if not user_validation and req_type != 'GET':
+    if not options.json:
+        errorAndExit("you must supply the -y option for json format")
     if not options.skip_validation:
         user_make_sure("\nAre you sure you want to updated these groups [y/n]? ")
     else:
-        print "Found skip validation option, skipping user prompt...\n"
+        if not options.json:
+            print "Found skip validation option, skipping user prompt...\n"
     user_validation = True
-    print_message("Updating groups - hold on...")
+    if not options.json:
+        print_message("Updating groups - hold on...")
 
 
 # loop through each group and update
@@ -358,7 +404,7 @@ for group, group_values in groups_to_update.iteritems():
     group_id = group_values[0]
     group_req_uri = req_uri.replace(group_placeholder, group_id)
     try:
-        open_thread(query_thread, (requests_queue, group, group_req_uri, token, req_type, payload))
+        open_thread(query_thread, (requests_queue, group, group_req_uri, token, req_type, payload, account))
     except Exception as e:
         errorAndExit(e)
 
@@ -371,21 +417,27 @@ for result in requests_queue:
     request_type = result[0]
     request_result = result[1]
     request_group = result[2]
-    print_header(request_group)
-    if request_result.status_code == 200:
-        if request_type == 'GET':
-            print request_result.content
-        else:
-            print_in_color('green', "Update was successful!")
+    group_result = {"group": request_group, "content": json_loads(request_result.content), "request_status_code": request_result.status_code}
+    if options.json:
+        print json_dumps(group_result, indent=2, sort_keys=True)
     else:
-        try:
-            data = json_loads(request_result.content)
-        except:
-            data = None
-        print_in_color('red', "Error while updating group!\nstatus code: {}".format(request_result.status_code))
-        if data is not None:
-            print "request content: {}".format(data['response']['errors'][0]['message'])
+        print_header(request_group)
+        if request_result.status_code == 200:
+            if request_type == 'GET':
+                if not options.get_user_data:
+                    print request_result.content
+                else:
+                    print b64decode(json_loads(request_result.content)['response']['items'][0]['compute']['launchSpecification']['userData'])
+            else:
+                print_in_color('green', "Update was successful!")
+        else:
+            try:
+                data = json_loads(request_result.content)
+            except:
+                data = None
+            print_in_color('red', "Error while updating group!\nstatus code: {}".format(request_result.status_code))
+            if data is not None:
+                print "request content: {}".format(data['response']['errors'][0]['message'])
 
-
-print_message("Done executing on all groups!")
-
+if not options.json:
+    print_message("Done executing on all groups!")
