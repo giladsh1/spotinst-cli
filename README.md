@@ -13,6 +13,7 @@ spotinst-cli has the following flags -
   -j, --json                     output pure json -- useful for piping into json parsers like jq
   -d, --get-data                 get groups data from spotinst
   -s, --get-status               get groups status  
+  --get-health                   get groups health per instance
   --min=MIN                      update group minimum capacity, must supply with max and target
   --target=TARGET                update group target capacity, must supply with min and max
   --max=MAX                      update group maximum capacity, must supply with min and target
