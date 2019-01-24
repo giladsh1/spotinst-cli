@@ -65,6 +65,11 @@ There is currently no way to pull account ids from the SpotInst API.
 
 ### Installation 
 ```
+pip install spotinst-cli
+```
+OR 
+```
 git clone git@github.com:giladsh1/spotinst-cli.git
+pip install $(pwd)/requirements.txt --user --upgrade
 ln -s /usr/local/bin/spotinst-cli $(pwd)spotinst-cli/spotinst-cli
 ```
