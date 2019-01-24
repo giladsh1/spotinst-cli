@@ -14,12 +14,13 @@ from commands import getoutput, getstatusoutput
 from threading import Thread
 from pkg_resources import DistributionNotFound
 
+
 # This function opens a thread with args
-def open_thread(thread_target,thread_args):
+def open_thread(thread_target, thread_args):
     t = Thread(target=thread_target, args = (thread_args))
     t.daemon = True
     t.start()
-    processes.append(t)
+    thread_list.append(t)
 
 
 # This function prints error and exits
@@ -54,7 +55,7 @@ def print_header(text):
 
 
 # This function queries spotinst API endpoint and returns the result to a queue
-def query_thread(queue, group, api_url, spotinst_token, req_method='GET', req_payload=None, account=None):
+def query_thread(queue, group, api_url, spotinst_token, http_method='GET', req_payload=None, account=None):
     try:
         headers = {
             'Content-Type': 'application/json',
@@ -64,23 +65,23 @@ def query_thread(queue, group, api_url, spotinst_token, req_method='GET', req_pa
             api_url = "{api_url}?accountId={account}".format(**locals())
 
         result = ""
-        if req_method == 'GET':
+        if http_method == 'GET':
             result = get(api_url, headers=headers)
-        elif req_method == 'PUT':
+        elif http_method == 'PUT':
             result = put(api_url, headers=headers, data=req_payload)
-        elif req_method == 'POST':
+        elif http_method == 'POST':
             result = post(api_url, headers=headers, data=req_payload)
-        elif req_method == 'DELETE':
+        elif http_method == 'DELETE':
             result = delete(api_url, headers=headers, data=req_payload)
         else:
-            errorAndExit("wrong http method: {req_method}".format(**locals()))
-        queue.append([req_method, result, group])
+            errorAndExit("wrong http method: {http_method}".format(**locals()))
+        queue.append([http_method, result, group])
     except Exception as e:
         errorAndExit(e.message)
 
 
 # This function queries spotinst API endpoint
-def query_api(api_url, spotinst_token, req_method='GET', req_payload=None, account=None):
+def query_api(api_url, spotinst_token, http_method='GET', req_payload=None, account=None):
     try:
         headers = {
             'Content-Type': 'application/json',
@@ -89,16 +90,16 @@ def query_api(api_url, spotinst_token, req_method='GET', req_payload=None, accou
         if account is not None:
             api_url = "{api_url}?accountId={account}".format(**locals())
 
-        if req_method == 'GET':
+        if http_method == 'GET':
             return get(api_url, headers=headers)
-        elif req_method == 'PUT':
+        elif http_method == 'PUT':
             return put(api_url, headers=headers, data=req_payload)
-        elif req_method == 'POST':
+        elif http_method == 'POST':
             return post(api_url, headers=headers, data=req_payload)
-        elif req_method == 'DELETE':
+        elif http_method == 'DELETE':
             return delete(api_url, headers=headers, data=req_payload)
         else:
-            errorAndExit("wrong http method: {req_method}".format(**locals()))
+            errorAndExit("wrong http method: {http_method}".format(**locals()))
     except Exception as e:
         errorAndExit(e.message)
 
@@ -123,7 +124,7 @@ def get_groups(base_api_path, token, account, grep_list, ungrep_list):
     else:
         for group in all_groups:
             group_name = group['name'].lower()
-            if [grep_term for grep_term in grep_list if grep_term in group_name] and not [ungrep_term for ungrep_term in ungrep_list if ungrep_term in group_name]:
+            if [grep_term for grep_term in grep_list if grep_term.lower() in group_name] and not [ungrep_term for ungrep_term in ungrep_list if ungrep_term.lower() in group_name]:
                 groups[group['name']] = [group['id'], group['capacity']['minimum'], group['capacity']['target'], group['capacity']['maximum']]
     # return a sorted list of groups
     return OrderedDict(sorted(groups.items()))
@@ -222,6 +223,7 @@ def validate_suspension(option, opt, value, parser):
     else:
         setattr(parser.values, option.dest, [value])
 
+
 ##### MAIN ####
 validate_pip_packages()
 from prettytable import PrettyTable
@@ -229,8 +231,8 @@ from requests import put, get, post, delete
 
 # global variables
 base_api_path = "https://api.spotinst.io/aws/ec2/group"
-percent_alert_threshold = 30
-processes = []
+http_method = 'GET' # set as the default method, and overwrite when necessary
+thread_list = []
 requests_queue = []
 group_placeholder = "__group_id__"
 valid_suspension_types = ["AUTO_SCALE", "AUTO_HEALING", "OUT_OF_STRATEGY","PREVENTIVE_REPLACEMENT","REVERT_PREFERRED", "ALL"]
@@ -246,8 +248,9 @@ parser.add_option("-g", "--grep", type="string", action="callback", dest="grep",
 parser.add_option("-u", "--ungrep", type="string", action="callback", default="", callback=parser_split, dest="ungrep", help="text to exclude groups")
 parser.add_option("-l", "--list", action="store_true", dest="list", help="show group list and exit")
 parser.add_option("-j", "--json", action="store_true", dest="json", help="output pure json -- useful for piping into json parsers like jq")
-parser.add_option("-d", "--get-data", action="store_true", dest="data", default="", help="get groups data")
-parser.add_option("-s", "--get-status", action="store_true", dest="status", default="", help="get groups status")
+parser.add_option("-d", "--get-data", action="store_true", dest="data", help="get groups config data")
+parser.add_option("-s", "--get-status", action="store_true", dest="status", help="get groups current status")
+parser.add_option("--get-health", action="store_true", dest="health_status", help="get groups health per instance")
 parser.add_option("--min", action="store", dest="min", type=int, help="update group minimum capacity, must suuply with max and target")
 parser.add_option("--target", action="store", dest="target", type=int, help="update group target capacity, must supply with min and max")
 parser.add_option("--max", action="store", dest="max", type=int, help="update group maximum capacity, must supply with min and target")
@@ -261,7 +264,7 @@ parser.add_option("--batch-size", action="store", dest="batch", type=int, help="
 parser.add_option("--grace-period", action="store", dest="grace", type=int, help="roll grace period - must supply with the roll flag")
 parser.add_option("--replace-ami", action="store", dest="ami", help="replace AMI for group")
 parser.add_option("--replace-health", action="store", dest="health", choices=['EC2', 'ELB', 'HCS'], help="replace health check type - valid options: EC2, ELB, HCS")
-parser.add_option("--set-user-data", action="store", dest="user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
+parser.add_option("--set-user-data", action="store", dest="set_user_data", help="updated user data - supply a file path which contains the user data script (cloud init)")
 parser.add_option("--get-user-data", action="store_true", dest="get_user_data", help="fetch the user data script (cloud init)")
 parser.add_option("--roll-status", action="store_true", dest="roll_status", help="check the status of deployments")
 parser.add_option("-y", "--skip-validation", action="store_true", dest="skip_validation", help="skip prompt validation for non-interactive mode")
@@ -305,34 +308,42 @@ print_all_groups(groups_to_update)
 if options.list:
     exit()
 
-# handle data request
+# get data request
 if options.data:
-    req_type = 'GET'
     req_uri = "{}/{}".format(base_api_path, group_placeholder)
 
-# handle status request
+# get status request
 elif options.status:
-    req_type = 'GET'
     req_uri = "{}/{}/status".format(base_api_path, group_placeholder)
 
-# handle suspension data request
+elif options.health_status:
+    req_uri = "{}/{}/instanceHealthiness".format(base_api_path, group_placeholder)
+
+# get user data script
+elif options.get_user_data:
+    req_uri = "{}/{}".format(base_api_path, group_placeholder)
+
+# get roll status
+elif options.roll_status:
+    req_uri = "{}/{}/roll".format(base_api_path, group_placeholder)
+
+# get suspension status
 elif options.suspension:
-    req_type = 'GET'
     req_uri = "{}/{}/suspension".format(base_api_path, group_placeholder)
 
-# handle suspension request
+# suspend / un-suspend equest
 elif any([options.suspend, options.unsuspend]):
     req_uri = "{}/{}/suspension".format(base_api_path, group_placeholder)
     if options.suspend:
-        req_type = 'POST'
+        http_method = 'POST'
         payload = json_dumps({"processes": options.suspend})
     elif options.unsuspend:
-        req_type = 'DELETE'
+        http_method = 'DELETE'
         payload = json_dumps({"processes": options.unsuspend})
 
-# handle scale request
+# scale up / down
 elif any([options.scale_down, options.scale_up]):
-    req_type = 'PUT'
+    http_method = 'PUT'
     if options.scale_up:
         command = "up"
         adjustment = options.scale_up
@@ -341,53 +352,45 @@ elif any([options.scale_down, options.scale_up]):
         adjustment = options.scale_down
     req_uri = "{}/{}/scale/{}\?adjustment={}".format(base_api_path, group_placeholder, command, adjustment)
 
-# handle group update request
+# set target, max and min
 elif all([options.min, options.target, options.max]):
+    http_method = 'PUT'
     payload = json_dumps({ "group": { "capacity": { "target": options.target, "minimum": options.min , "maximum": options.max }}})
-    req_type = 'PUT'
     req_uri = "{}/{}".format(base_api_path, group_placeholder)
 
-# handle roll request
+# roll request
 elif all([options.roll, options.batch, options.grace]):
-    req_type = 'PUT'
+    http_method = 'PUT'
     req_uri = "{}/{}/roll".format(base_api_path, group_placeholder)
     payload = json_dumps({ "batchSizePercentage" : options.batch, "gracePeriod" : options.grace })
 
-# handle replace ami
+# replace ami and health type
 elif any([options.ami, options.health]):
-    req_type = 'PUT'
+    http_method = 'PUT'
     req_uri = "{}/{}".format(base_api_path, group_placeholder)
     if options.ami:
         payload = json_dumps({ "group": { "compute": { "launchSpecification": { "imageId": options.ami  }}}})
     else:
         payload = json_dumps({"group": {"compute": {"launchSpecification": {"healthCheckType": options.health}}}})
 
-# handle replace of user data script
-elif options.user_data:
-    if not path.isfile(options.user_data):
-        errorAndExit("{} is not a valid file name!".format(options.user_data))
-    f = open(options.user_data, "r")
-    user_data_script = f.read()
-    f.close()
+# replace user data script
+elif options.set_user_data:
+    if not path.isfile(options.set_user_data):
+        errorAndExit("{} is not a valid file name!".format(options.set_user_data))
+    with open(options.set_user_data, "r") as f:
+        user_data_script = f.read()
     user_data_script = b64encode(user_data_script)
     req_uri = "{}/{}".format(base_api_path, group_placeholder)
-    req_type = 'PUT'
+    http_method = 'PUT'
     payload = json_dumps({ "group": { "compute": { "launchSpecification": { "userData": user_data_script  }}}})
-
-elif options.get_user_data:
-    req_type = 'GET'
-    req_uri = "{}/{}".format(base_api_path, group_placeholder)
-
-elif options.roll_status:
-    req_type = 'GET'
-    req_uri = "{}/{}/roll".format(base_api_path, group_placeholder)
 
 else:
     errorAndExit("Wrong options set - existing")
 
+
 # make sure the user wants to continue with the current filter (unless the req type is GET)
-if not user_validation and req_type != 'GET':
-    if not options.json:
+if not user_validation and http_method != 'GET':
+    if options.json and not options.skip_validation:
         errorAndExit("you must supply the -y option for json format")
     if not options.skip_validation:
         user_make_sure("\nAre you sure you want to updated these groups [y/n]? ")
@@ -404,17 +407,17 @@ for group, group_values in groups_to_update.iteritems():
     group_id = group_values[0]
     group_req_uri = req_uri.replace(group_placeholder, group_id)
     try:
-        open_thread(query_thread, (requests_queue, group, group_req_uri, token, req_type, payload, account))
+        open_thread(query_thread, (requests_queue, group, group_req_uri, token, http_method, payload, account))
     except Exception as e:
         errorAndExit(e)
 
 # wait for all threads to finish
-for p in processes:
-    p.join()
+for thread in thread_list:
+    thread.join()
 
 # print the results
 for result in requests_queue:
-    request_type = result[0]
+    http_method = result[0]
     request_result = result[1]
     request_group = result[2]
     group_result = {"group": request_group, "content": json_loads(request_result.content), "request_status_code": request_result.status_code}
@@ -423,7 +426,7 @@ for result in requests_queue:
     else:
         print_header(request_group)
         if request_result.status_code == 200:
-            if request_type == 'GET':
+            if http_method == 'GET':
                 if not options.get_user_data:
                     print request_result.content
                 else:
