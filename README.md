@@ -1,6 +1,11 @@
 # spotinst-cli
 spotinst-cli is is an interactive command line tool which allows you to to control your spotinst groups and instances.
 
+### Installation 
+```
+pip install spotinstcli
+```
+
 ### Usage  
 
 spotinst-cli has the following flags -
@@ -64,13 +69,4 @@ Set variables like:
 SpotInst account ids can be found in the web console under settings/account for each of your accounts.  
 There is currently no way to pull account ids from the SpotInst API.  
 
-### Installation 
-```
-pip install spotinst-cli
-```
-OR 
-```
-git clone git@github.com:giladsh1/spotinst-cli.git
-pip install $(pwd)/requirements.txt --user --upgrade
-ln -s /usr/local/bin/spotinst-cli $(pwd)spotinst-cli/spotinst-cli
-```
+
