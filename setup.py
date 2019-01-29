@@ -11,7 +11,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
 	name='spotinstcli',
-	version='0.1.0',
+	version='0.1.2',
 	description='CLI tool for interacting with Spotinst AWS elasticgroups',
 	long_description=long_description,
 	url='https://github.com/giladsh1/spotinst-cli',
@@ -34,7 +34,8 @@ setup(
 		'prettytable',
 		'requests',
 		'PyInquirer',
-		'clint'
+		'clint',
+		'wcwidth'
 	],
 	include_package_data=True
  )
