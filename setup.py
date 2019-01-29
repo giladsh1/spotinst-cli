@@ -6,27 +6,35 @@ from io import open
 here = path.abspath(path.dirname(__file__))
 
 # Get the long description from the README file
-with open(path.join(here, "README.md"), encoding="utf-8") as f:
+with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 	long_description = f.read()
 
 setup(
-	name="spotinst-cli",
-	version="0.1",
-	description="CLI tool for interacting with Spotinst AWS elasticgroups",
+	name='spotinstcli',
+	version='0.1.0',
+	description='CLI tool for interacting with Spotinst AWS elasticgroups',
 	long_description=long_description,
-	url="https://github.com/giladsh1/spotinst-cli",
-	author="Gilad Sharaby",
-	author_email="giladsh1@gmail.com",
+	url='https://github.com/giladsh1/spotinst-cli',
+	author='Gilad Sharaby',
+	author_email='giladsh1@gmail.com',
 	classifiers=[
-		 "Programming Language :: Python :: 2",
-         "Programming Language :: Python :: 2.7",
-		 "License :: OSI Approved :: MIT License",
-		 "Operating System :: OS Independent",
+		 'Programming Language :: Python :: 2',
+         'Programming Language :: Python :: 2.7',
+		 'License :: OSI Approved :: MIT License',
+		 'Operating System :: OS Independent',
 	 ],
-	keywords="spotinst cli aws",
-	scripts=["/usr/local/bin/spotinst-cli"],
+	keywords='spotinst cli aws',
+	packages=find_packages(),
+	entry_points={
+		'console_scripts': [
+			'spotinstcli = spotinstcli:main',
+		]
+	},
 	install_requires = [
-		"prettytable",
-		"requests"
-	]
+		'prettytable',
+		'requests',
+		'PyInquirer',
+		'clint'
+	],
+	include_package_data=True
  )
