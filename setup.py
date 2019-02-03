@@ -11,7 +11,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
 	name='spotinstcli',
-	version='0.1.2',
+	version='0.1.3',
 	description='CLI tool for interacting with Spotinst AWS elasticgroups',
 	long_description=long_description,
 	url='https://github.com/giladsh1/spotinst-cli',
@@ -23,11 +23,11 @@ setup(
 		 'License :: OSI Approved :: MIT License',
 		 'Operating System :: OS Independent',
 	 ],
-	keywords='spotinst cli aws',
+	keywords='spotinst cli aws spotinst-cli',
 	packages=find_packages(),
 	entry_points={
 		'console_scripts': [
-			'spotinstcli = spotinstcli:main',
+			'spotinst-cli = spotinstcli:main',
 		]
 	},
 	install_requires = [
